@@ -390,4 +390,12 @@ class EmailToolHandlers:
         response.append({"type": "text", "text": summary})
         
         # Format emails similar to list
-        return response + EmailToolHandlers._format_email_list({'emails': emails}, ctx)[1:]
+        email_list_result = EmailToolHandlers._format_email_list({'emails': emails}, ctx)
+        
+        # If email_list_result has summary, skip it; otherwise keep all items
+        if len(email_list_result) > 1:
+            # Has summary, skip the first item
+            return response + email_list_result[1:]
+        else:
+            # No summary, keep all items
+            return response + email_list_result
