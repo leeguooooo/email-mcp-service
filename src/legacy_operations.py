@@ -130,7 +130,10 @@ def fetch_emails(limit=50, unread_only=False, folder="INBOX", account_id=None):
         conn_mgr = get_connection_manager(account_id)
         mail = conn_mgr.connect_imap()
         
-        mail.select(folder)
+        # Select folder and check status
+        result, data = mail.select(folder)
+        if result != 'OK':
+            raise ValueError(f"Cannot select folder '{folder}': {data}")
         
         # Search criteria
         if unread_only:
@@ -282,7 +285,9 @@ def get_email_detail(email_id, folder="INBOX", account_id=None):
         conn_mgr = get_connection_manager(account_id)
         mail = conn_mgr.connect_imap()
         
-        mail.select(folder)
+        result, data = mail.select(folder)
+        if result != 'OK':
+            raise ValueError(f"Cannot select folder '{folder}': {data}")
         
         # Ensure email_id is a string
         if isinstance(email_id, int):
@@ -372,7 +377,9 @@ def mark_email_read(email_id, folder="INBOX", account_id=None):
         conn_mgr = get_connection_manager(account_id)
         mail = conn_mgr.connect_imap()
         
-        mail.select(folder)
+        result, data = mail.select(folder)
+        if result != 'OK':
+            raise ValueError(f"Cannot select folder '{folder}': {data}")
         mail.store(email_id, '+FLAGS', '\\Seen')
         mail.close()
         mail.logout()
@@ -389,7 +396,9 @@ def delete_email(email_id, folder="INBOX", account_id=None):
         conn_mgr = get_connection_manager(account_id)
         mail = conn_mgr.connect_imap()
         
-        mail.select(folder)
+        result, data = mail.select(folder)
+        if result != 'OK':
+            raise ValueError(f"Cannot select folder '{folder}': {data}")
         mail.store(email_id, '+FLAGS', '\\Deleted')
         mail.expunge()
         mail.close()
@@ -407,7 +416,9 @@ def move_email_to_trash(email_id, folder="INBOX", trash_folder="Trash", account_
         conn_mgr = get_connection_manager(account_id)
         mail = conn_mgr.connect_imap()
         
-        mail.select(folder)
+        result, data = mail.select(folder)
+        if result != 'OK':
+            raise ValueError(f"Cannot select folder '{folder}': {data}")
         
         # Try to copy to trash folder
         result, data = mail.copy(email_id, trash_folder)
@@ -437,7 +448,9 @@ def batch_move_to_trash(email_ids, folder="INBOX", trash_folder="Trash", account
         conn_mgr = get_connection_manager(account_id)
         mail = conn_mgr.connect_imap()
         
-        mail.select(folder)
+        result, data = mail.select(folder)
+        if result != 'OK':
+            raise ValueError(f"Cannot select folder '{folder}': {data}")
         
         # Check if trash folder exists
         result, folders = mail.list()
@@ -504,7 +517,9 @@ def batch_delete_emails(email_ids, folder="INBOX", account_id=None):
         conn_mgr = get_connection_manager(account_id)
         mail = conn_mgr.connect_imap()
         
-        mail.select(folder)
+        result, data = mail.select(folder)
+        if result != 'OK':
+            raise ValueError(f"Cannot select folder '{folder}': {data}")
         
         deleted_count = 0
         failed_ids = []
@@ -542,7 +557,9 @@ def batch_mark_read(email_ids, folder="INBOX", account_id=None):
         conn_mgr = get_connection_manager(account_id)
         mail = conn_mgr.connect_imap()
         
-        mail.select(folder)
+        result, data = mail.select(folder)
+        if result != 'OK':
+            raise ValueError(f"Cannot select folder '{folder}': {data}")
         
         marked_count = 0
         failed_ids = []

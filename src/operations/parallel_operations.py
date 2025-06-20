@@ -228,7 +228,10 @@ class ParallelBatchOperations:
             mail = connection_manager.connect_imap()
             
             try:
-                mail.select(folder)
+                result, data = mail.select(folder)
+                if result != 'OK':
+                    logger.error(f"Cannot select folder '{folder}' for account {account_id}: {data}")
+                    return {'success': False, 'error': f'Cannot select folder {folder}'}
                 
                 deleted_count = 0
                 failed_ids = []
@@ -297,7 +300,10 @@ class ParallelBatchOperations:
             mail = connection_manager.connect_imap()
             
             try:
-                mail.select(folder)
+                result, data = mail.select(folder)
+                if result != 'OK':
+                    logger.error(f"Cannot select folder '{folder}' for account {account_id}: {data}")
+                    return {'success': False, 'error': f'Cannot select folder {folder}'}
                 
                 marked_count = 0
                 failed_ids = []
@@ -372,7 +378,10 @@ class ParallelBatchOperations:
             mail = connection_manager.connect_imap()
             
             try:
-                mail.select(source_folder)
+                result, data = mail.select(source_folder)
+                if result != 'OK':
+                    logger.error(f"Cannot select folder '{source_folder}' for account {account_id}: {data}")
+                    return {'success': False, 'error': f'Cannot select source folder {source_folder}'}
                 
                 moved_count = 0
                 failed_ids = []

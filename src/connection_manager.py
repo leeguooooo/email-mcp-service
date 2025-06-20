@@ -217,7 +217,9 @@ class ConnectionManager:
         # Test IMAP
         try:
             mail = self.connect_imap()
-            mail.select('INBOX')
+            result, data = mail.select('INBOX')
+            if result != 'OK':
+                raise ValueError(f"Cannot select INBOX: {data}")
             
             # Get email count
             _, data = mail.search(None, 'ALL')
