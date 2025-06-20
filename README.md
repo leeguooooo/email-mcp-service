@@ -30,28 +30,22 @@ uv run python setup.py
 
 ### 3. 初始化数据库和同步
 
-#### 方式1：使用初始化工具（推荐）
-
 ```bash
-# 运行初始化工具
+# 交互式模式（推荐新手）
 uv run python init_sync.py
+
+# 直接初始化数据库
+uv run python init_sync.py init
+
+# 启动后台守护进程（持续同步）
+uv run python init_sync.py daemon
 ```
 
-这个工具会：
+**功能说明：**
 - 自动创建配置文件
-- 检查邮箱账户配置
+- 检查邮箱账户配置  
 - 初始化数据库并同步最近6个月的邮件
-- 可选择启动后台自动同步
-
-#### 方式2：手动配置
-
-```bash
-# 1. 复制配置示例文件
-cp sync_config.json.example sync_config.json
-
-# 2. 通过MCP客户端手动触发首次同步
-# 在Claude Desktop中执行：sync_emails with action="force"
-```
+- 支持后台守护进程模式持续同步
 
 #### 邮箱配置说明
 

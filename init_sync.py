@@ -118,7 +118,35 @@ def start_background_sync():
 
 def main():
     """主入口"""
-    print("=== MCP Email Service 数据库初始化工具 ===\n")
+    # 支持命令行参数
+    if len(sys.argv) > 1:
+        command = sys.argv[1]
+        
+        if command == "init":
+            # 直接初始化数据库
+            if check_config() and check_accounts():
+                init_database()
+            return
+            
+        elif command == "daemon":
+            # 后台守护进程模式
+            if check_config() and check_accounts():
+                logger.info("启动邮件同步守护进程...")
+                logger.info("使用 Ctrl+C 停止，或者在新终端运行: pkill -f init_sync.py")
+                start_background_sync()
+            return
+            
+        elif command == "help":
+            print("MCP Email Service 邮件同步工具")
+            print("用法:")
+            print("  python init_sync.py         - 交互式模式")
+            print("  python init_sync.py init    - 直接初始化数据库")
+            print("  python init_sync.py daemon  - 后台守护进程模式")
+            print("  python init_sync.py help    - 显示帮助")
+            return
+    
+    # 交互式模式
+    print("=== MCP Email Service 邮件同步工具 ===\n")
     
     # 1. 检查配置文件
     if not check_config():
@@ -131,7 +159,7 @@ def main():
     # 3. 询问用户操作
     print("\n请选择操作:")
     print("1. 初始化数据库并首次同步")
-    print("2. 启动后台自动同步")
+    print("2. 启动后台守护进程（持续运行）")
     print("3. 仅初始化数据库")
     print("0. 退出")
     
@@ -140,10 +168,14 @@ def main():
         
         if choice == "1":
             if init_database():
-                print("\n是否启动后台自动同步? (y/n): ", end="")
+                print("\n是否启动后台守护进程? (y/n): ", end="")
                 if input().lower().startswith('y'):
+                    logger.info("启动后台守护进程...")
+                    logger.info("使用 Ctrl+C 停止")
                     start_background_sync()
         elif choice == "2":
+            logger.info("启动后台守护进程...")
+            logger.info("使用 Ctrl+C 停止")
             start_background_sync()
         elif choice == "3":
             init_database()
