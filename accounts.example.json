@@ -1,0 +1,23 @@
+{
+  "accounts": {
+    "work_163": {
+      "email": "your_work@163.com",
+      "password": "获取的授权码",
+      "provider": "163",
+      "description": "工作邮箱"
+    },
+    "personal_gmail": {
+      "email": "your_personal@gmail.com",
+      "password": "应用专用密码",
+      "provider": "gmail",
+      "description": "个人邮箱"
+    },
+    "qq_mail": {
+      "email": "your_qq@qq.com",
+      "password": "QQ邮箱授权码",
+      "provider": "qq",
+      "description": "QQ邮箱"
+    }
+  },
+  "default_account": "work_163"
+}
