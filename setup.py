@@ -34,7 +34,8 @@ def print_providers():
     print("1. 163邮箱 (完全支持)")
     print("2. Gmail (需要应用专用密码)")
     print("3. QQ邮箱 (需要授权码)")
-    print("4. 自定义邮箱服务器")
+    print("4. Outlook/Hotmail")
+    print("5. 自定义邮箱服务器")
 
 def get_provider_config(provider):
     """获取提供商特定的配置指南"""
@@ -62,6 +63,13 @@ QQ邮箱配置步骤:
 4. 生成授权码（需要发送短信）
 ⚠️  使用授权码，不是QQ密码！
 """,
+        'outlook': """
+Outlook/Hotmail配置步骤:
+1. 使用您的Microsoft账户邮箱地址
+2. 直接使用邮箱密码登录
+3. 如果开启了两步验证，需要生成应用密码
+4. 访问: https://account.microsoft.com/security
+""",
         'custom': """
 自定义邮箱配置需要提供:
 - IMAP服务器地址和端口
@@ -76,8 +84,8 @@ def add_account(config):
     print("\n➕ 添加新邮箱账户")
     print_providers()
     
-    provider_map = {'1': '163', '2': 'gmail', '3': 'qq', '4': 'custom'}
-    choice = input("\n请选择邮箱类型 (1-4): ").strip()
+    provider_map = {'1': '163', '2': 'gmail', '3': 'qq', '4': 'outlook', '5': 'custom'}
+    choice = input("\n请选择邮箱类型 (1-5): ").strip()
     provider = provider_map.get(choice)
     
     if not provider:
