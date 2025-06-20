@@ -28,16 +28,29 @@ uv sync
 uv run python setup.py
 ```
 
-### 3. 初始化数据库和同步配置
+### 3. 初始化数据库和同步
 
-首次使用需要创建配置文件：
+#### 方式1：使用初始化工具（推荐）
 
 ```bash
-# 复制配置示例文件
+# 运行初始化工具
+uv run python init_sync.py
+```
+
+这个工具会：
+- 自动创建配置文件
+- 检查邮箱账户配置
+- 初始化数据库并同步最近6个月的邮件
+- 可选择启动后台自动同步
+
+#### 方式2：手动配置
+
+```bash
+# 1. 复制配置示例文件
 cp sync_config.json.example sync_config.json
 
-# 数据库会在首次同步时自动创建
-# 首次同步会获取最近6个月的邮件历史
+# 2. 通过MCP客户端手动触发首次同步
+# 在Claude Desktop中执行：sync_emails with action="force"
 ```
 
 #### 邮箱配置说明
