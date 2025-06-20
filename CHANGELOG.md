@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.1.0] - 2025-06-20
+
+### 🚀 Major Features
+- **Local SQLite Database Caching**:
+  - Implemented full email metadata caching for instant search and listing
+  - Added FTS5 full-text search support for blazing fast email searches
+  - Automatic background synchronization every 5 minutes
+  - On-demand email body fetching to save storage space
+  - Support for offline email browsing and search
+  - Database statistics and sync status monitoring
+
+### 🏗️ Database Architecture
+- Multi-table schema design:
+  - `accounts`: Email account management
+  - `folders`: Folder structure caching  
+  - `emails`: Email metadata with search indexes
+  - `email_contents`: Optional full email body storage
+  - `attachments`: Attachment metadata tracking
+  - `sync_log`: Synchronization history and monitoring
+- Thread-safe connection pooling
+- Incremental sync using IMAP UIDs
+- Automatic cleanup of old data
+
+### 📚 Documentation
+- Added comprehensive database design document
+- Created integration examples and usage guide
+- Updated README with SQLite caching plans
+
 ## [1.0.5] - 2025-06-20
 
 ### 🏗️ Architecture Improvements

@@ -296,7 +296,18 @@ def test_feature():
 
 ## Version History
 
-### v1.0.5 (2024-06-20)
+### v1.1.0 (2025-06-20)
+- **Local SQLite Database Implementation**:
+  - Full email metadata caching with instant search/list operations
+  - FTS5 full-text search for ultra-fast email searches
+  - Automatic 5-minute background sync with incremental updates
+  - On-demand body fetching to optimize storage
+  - Offline browsing support with graceful fallback
+  - Complete database design with 6 normalized tables
+  - Thread-safe operations with connection pooling
+  - Sync status monitoring and statistics API
+
+### v1.0.5 (2025-06-20)
 - **Major Performance Optimizations**:
   - Implemented IMAP UID search instead of sequence numbers (more reliable, faster)
   - Added batch email fetching - fetch multiple emails in single IMAP command
