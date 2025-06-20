@@ -1,0 +1,24 @@
+{
+  "enabled": true,
+  "sync_interval_minutes": 15,
+  "full_sync_interval_hours": 24,
+  "quiet_hours": {
+    "enabled": false,
+    "start": "23:00",
+    "end": "06:00"
+  },
+  "retry_settings": {
+    "max_retries": 3,
+    "retry_delay_minutes": 5
+  },
+  "performance": {
+    "max_concurrent_accounts": 2,
+    "batch_size": 50,
+    "request_delay_ms": 100
+  },
+  "auto_cleanup": {
+    "enabled": true,
+    "days_to_keep": 90,
+    "cleanup_interval_hours": 24
+  }
+}

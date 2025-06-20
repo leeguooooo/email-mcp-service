@@ -176,6 +176,16 @@ class MCPTools:
             "List all configured email accounts",
             LIST_ACCOUNTS_SCHEMA
         )(SystemHandlers.handle_list_accounts)
+        
+        # Unified sync tool
+        from core.sync_handlers import SyncHandlers
+        from core.tool_schemas import SYNC_EMAILS_SCHEMA
+        
+        tool_registry.register(
+            "sync_emails",
+            "Unified email synchronization tool: start/stop scheduler, force sync, get status, search cache, manage config (action: start|stop|force|status|search|recent|config)",
+            SYNC_EMAILS_SCHEMA
+        )(SyncHandlers.handle_sync_emails)
     
     def _setup_server_handlers(self):
         """Setup MCP server handlers"""

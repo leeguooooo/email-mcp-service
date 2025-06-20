@@ -168,11 +168,15 @@ class UIDSearchEngine:
             elif search_in == "body":
                 criteria_parts.append(f'BODY "{encoded_query}"')
             else:  # all
-                # Use nested OR for multiple fields (IMAP OR only takes 2 arguments)
-                criteria_parts.append(
-                    f'OR (OR SUBJECT "{encoded_query}" FROM "{encoded_query}") '
-                    f'(OR TO "{encoded_query}" BODY "{encoded_query}")'
-                )
+                # For non-ASCII text, use simpler TEXT search which is more compatible
+                if any(ord(c) > 127 for c in encoded_query):
+                    criteria_parts.append(f'TEXT "{encoded_query}"')
+                else:
+                    # Use nested OR for ASCII text only
+                    criteria_parts.append(
+                        f'OR (OR SUBJECT "{encoded_query}" FROM "{encoded_query}") '
+                        f'(OR TO "{encoded_query}" BODY "{encoded_query}")'
+                    )
         
         # Join criteria
         if criteria_parts:

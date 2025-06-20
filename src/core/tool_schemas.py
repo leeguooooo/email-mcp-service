@@ -371,3 +371,67 @@ LIST_ACCOUNTS_SCHEMA = {
     "type": "object",
     "properties": {}
 }
+
+# Unified sync tool schema
+SYNC_EMAILS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "action": {
+            "type": "string",
+            "enum": ["start", "stop", "force", "status", "search", "recent", "config"],
+            "description": "Action to perform: start/stop scheduler, force sync, get status, search cached emails, get recent emails, or manage config"
+        },
+        "full_sync": {
+            "type": "boolean",
+            "description": "For 'force' action: perform full sync instead of incremental",
+            "default": False
+        },
+        "account_id": {
+            "type": "string", 
+            "description": "For 'force', 'search', 'recent': target specific account only (optional)"
+        },
+        "query": {
+            "type": "string",
+            "description": "For 'search' action: search query keywords"
+        },
+        "limit": {
+            "type": "integer",
+            "description": "For 'search', 'recent' actions: maximum number of results",
+            "default": 20
+        },
+        "config_updates": {
+            "type": "object",
+            "description": "For 'config' action: configuration updates",
+            "properties": {
+                "interval_minutes": {
+                    "type": "integer",
+                    "description": "Sync interval in minutes (1-1440)",
+                    "minimum": 1,
+                    "maximum": 1440
+                },
+                "full_sync_hours": {
+                    "type": "integer",
+                    "description": "Full sync interval in hours (1-168)",
+                    "minimum": 1,
+                    "maximum": 168
+                },
+                "enabled": {
+                    "type": "boolean",
+                    "description": "Enable or disable sync"
+                },
+                "max_concurrent_accounts": {
+                    "type": "integer",
+                    "description": "Maximum concurrent accounts (1-10)",
+                    "minimum": 1,
+                    "maximum": 10
+                },
+                "cleanup_days": {
+                    "type": "integer",
+                    "description": "Days to keep emails (1-3650)",
+                    "minimum": 1,
+                    "maximum": 3650
+                }
+            }
+        }
+    }
+}
