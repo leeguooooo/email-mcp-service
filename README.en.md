@@ -1,241 +1,109 @@
 # MCP Email Service
 
-A unified MCP email service supporting multi-account management. Manage 163 Mail, Gmail, QQ Mail and more from a single interface.
+A unified MCP email service supporting multi-account management.
 
-## ✨ Key Features
+## Supported Email Providers
 
-- 🌐 **Multi-Account Management** - View emails from all accounts in one place
-- 📧 **Email Operations** - Read, mark, delete, move, and send emails
-- 🔍 **Smart Search** - Search by subject, sender, date and more
-- 📎 **Attachment Management** - View and download email attachments
-- 🚀 **Batch Operations** - Bulk mark as read, delete, and more
-- 📁 **Folder Management** - View and manage email folders
+- **163 Mail** (mail.163.com / mail.126.com)
+- **QQ Mail** (mail.qq.com)  
+- **Gmail** (mail.google.com)
+- **Outlook/Hotmail**
+- **Custom IMAP servers**
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Installation
 
-Requires Python 3.11+ and [UV](https://github.com/astral-sh/uv) package manager.
+Requires Python 3.11+ and [UV](https://github.com/astral-sh/uv).
 
 ```bash
-# Clone the repository
-git clone <repo-url>
+git clone https://github.com/leeguooooo/email-mcp-service.git
 cd mcp-email-service
-
-# Install dependencies
 uv sync
 ```
 
 ### 2. Configure Email Accounts
 
-Run the setup tool to add email accounts:
-
 ```bash
 uv run python setup.py
 ```
 
-Options:
-1. Add email account
-2. View all accounts  
-3. Delete account
-4. Set default account
-5. **Test connections** (recommended)
-6. Save and exit
+#### Email Configuration Guide
 
-#### Email Provider Setup
+| Provider | Configuration Steps |
+|----------|-------------------|
+| **163 Mail** | Login to mail.163.com → Settings → Enable IMAP → Get authorization code (use code, not password) |
+| **QQ Mail** | Settings → Account → Enable IMAP → Generate authorization code |
+| **Gmail** | Enable 2FA → [Generate app password](https://myaccount.google.com/apppasswords) |
+| **Outlook** | Use email password directly |
 
-| Provider | Configuration Steps | Notes |
-|----------|-------------------|-------|
-| **163/126 Mail** | Login to mail.163.com → Settings → Enable IMAP → Get authorization code | ⚠️ Use authorization code, not password |
-| **Gmail** | Enable 2-factor auth → [Generate app password](https://myaccount.google.com/apppasswords) | Requires app-specific password |
-| **QQ Mail** | Settings → Account → Enable IMAP → Generate authorization code | Use authorization code |
-| **Outlook** | Use email password directly | Usually no special setup needed |
+### 3. Add to MCP Client
 
-### 3. Test Connections
-
-Test your configuration:
-
-```bash
-# Using setup tool
-uv run python setup.py
-# Select "5. Test connections"
-
-# Or use standalone script
-uv run python test_connection.py
-```
-
-### 4. Integrate with MCP Client
-
-Add to your MCP client configuration:
+Add to your MCP client (e.g., Claude Desktop) config:
 
 ```json
 {
     "mcpServers": {
         "mcp-email-service": {
-            "command": "/path/to/mcp-email-service/run.sh",
+            "command": "/your/path/mcp-email-service/run.sh",
             "args": []
         }
     }
 }
 ```
 
-Restart your MCP client to use the service.
+## Main Features
 
-## 📋 Available Commands
+### View Emails
+```bash
+list_emails                              # View unread emails
+list_emails with unread_only=false       # View all emails
+list_emails with limit=100               # View more emails
+```
 
-### Basic Functions
-| Command | Description | Example |
-|---------|-------------|---------|
-| `check_connection` | Check all email connections | `check_connection` |
-| `list_emails` | List emails (unread by default) | `list_emails` |
-| `get_email_detail` | View email details | `get_email_detail with email_id="123"` |
-| `search_emails` | Search emails | `search_emails with query="meeting"` |
+### Search Emails
+```bash
+search_emails with query="meeting"                 # Search emails containing "meeting"
+search_emails with query="john" search_in="from"   # Search by sender
+search_emails with date_from="2024-01-01"         # Search by date
+```
 
 ### Email Operations
-| Command | Description | Example |
-|---------|-------------|---------|
-| `mark_emails` | Mark emails as read/unread | `mark_emails with email_ids=["123"] mark_as="read"` |
-| `flag_email` | Add/remove star | `flag_email with email_id="123"` |
-| `delete_emails` | Delete emails | `delete_emails with email_ids=["123"] permanent=false` |
-
-### Advanced Features
-| Command | Description | Example |
-|---------|-------------|---------|
-| `send_email` | Send new email | `send_email with to=["a@b.com"] subject="Hi" body="Hello"` |
-| `reply_email` | Reply to email | `reply_email with email_id="123" body="Thanks"` |
-| `list_folders` | List folders | `list_folders` |
-| `get_email_attachments` | Get attachments | `get_email_attachments with email_id="123"` |
-| `move_emails_to_folder` | Move emails | `move_emails_to_folder with email_ids=["123"] target_folder="Important"` |
-
-## 💡 Usage Tips
-
-### 1. Viewing Emails
 ```bash
-# View unread emails from all accounts (default)
-list_emails
-
-# View all emails
-list_emails with unread_only=false
-
-# View from specific account
-list_emails with account_id="env_163"
-
-# Increase limit
-list_emails with limit=100
+get_email_detail with email_id="123"              # View email details
+mark_emails with email_ids=["123"] mark_as="read" # Mark as read
+delete_emails with email_ids=["123"]              # Delete email
+flag_email with email_id="123" set_flag=true      # Add star
 ```
 
-### 2. Searching Emails
+### Send Emails
 ```bash
-# Search by subject
-search_emails with query="meeting" search_in="subject"
-
-# Search by sender
-search_emails with query="boss@company.com" search_in="from"
-
-# Search by date range
-search_emails with date_from="2024-01-01" date_to="2024-01-31"
-
-# Search unread only
-search_emails with query="important" unread_only=true
+send_email with to=["user@example.com"] subject="Subject" body="Content"
+reply_email with email_id="123" body="Reply content"
 ```
 
-### 3. Managing Emails
-```bash
-# Mark multiple as read
-mark_emails with email_ids=["1", "2", "3"] mark_as="read"
+## Available Commands
 
-# Move to trash (default)
-delete_emails with email_ids=["1", "2"]
+- `list_emails` - List emails
+- `get_email_detail` - View email details
+- `search_emails` - Search emails
+- `mark_emails` - Mark as read/unread
+- `delete_emails` - Delete emails
+- `flag_email` - Star/unstar emails
+- `send_email` - Send new email
+- `reply_email` - Reply to email
+- `forward_email` - Forward email
+- `move_emails_to_folder` - Move emails
+- `list_folders` - View folders
+- `get_email_attachments` - Get attachments
+- `check_connection` - Test connections
 
-# Permanently delete
-delete_emails with email_ids=["1", "2"] permanent=true
+## Troubleshooting
 
-# Move to folder
-move_emails_to_folder with email_ids=["1", "2"] target_folder="Archive"
-```
+1. **Login Failed**: 163/QQ Mail use authorization codes, Gmail uses app passwords
+2. **Can't Find Emails**: Default shows unread only, use `unread_only=false`
+3. **Connection Timeout**: Check network and firewall settings
 
-### 4. Sending Emails
-```bash
-# Send simple email
-send_email with to=["user@example.com"] subject="Test" body="This is a test"
-
-# Send HTML email
-send_email with to=["user@example.com"] subject="Test" body="<h1>Title</h1><p>Content</p>" is_html=true
-
-# With attachments
-send_email with to=["user@example.com"] subject="Files" body="Please see attached" attachments=["/path/to/file.pdf"]
-```
-
-## 🌍 Language Support
-
-The service supports multiple languages for responses:
-
-```bash
-# Chinese (default)
-./run.sh
-
-# English
-MCP_LANGUAGE=en ./run.sh
-```
-
-## 🔧 Troubleshooting
-
-### Login Failed
-- **163 Mail**: Ensure using authorization code, not password. Check IMAP is enabled
-- **Gmail**: Need app-specific password, not Google account password
-- **QQ Mail**: Need authorization code from settings
-
-### Connection Timeout
-- Check network connection
-- Ensure firewall allows IMAP connections (port 993)
-- Some corporate networks may block email ports
-
-### Can't Find Emails
-- Default shows only unread emails, use `unread_only=false` to see all
-- Check if emails are in other folders (like trash)
-
-### Multiple Accounts
-Run `uv run python setup.py` to add multiple accounts. All commands operate on all accounts by default.
-
-## 🚀 Performance Optimization Plan
-
-### To-Do Items
-- [ ] **Code Splitting Optimization**
-  - Split large files (main.py, mcp_tools.py) into smaller modules
-  - Separate email operations, account management, and utility functions
-  - Optimize code reuse and reduce duplicate code
-
-- [ ] **Email Fetching Performance**
-  - Implement email caching mechanism to reduce redundant fetches
-  - Add incremental sync to fetch only new emails
-  - Optimize batch operation performance
-
-- [ ] **Connection Management Optimization**
-  - Implement connection pool to reuse IMAP connections
-  - Add connection timeout and retry mechanisms
-  - Optimize multi-account concurrent connections
-
-- [ ] **Memory Optimization**
-  - Stream processing for large emails and attachments
-  - Timely release of unused objects
-  - Optimize memory usage for email lists
-
-- [ ] **Error Handling Improvements**
-  - Unified error handling mechanism
-  - More detailed error logging
-  - Graceful degradation handling
-
-## 🙏 Acknowledgments
-
-Special thanks to the following projects and contributors:
-
-- [pyisemail](https://github.com/michaelhelmick/pyisemail) - Reference implementation for email validation
-- [imaplib](https://docs.python.org/3/library/imaplib.html) - Python standard library IMAP support
-- [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) - Anthropic's open protocol
-- All contributors who submitted issues and PRs
-
-If this project helps you, please give it a ⭐️!
-
-## 📝 License
+## License
 
 MIT License
