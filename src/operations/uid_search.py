@@ -46,7 +46,17 @@ class UIDSearchEngine:
             
             # Use UID SEARCH instead of regular SEARCH
             logger.info(f"Searching with criteria: {search_criteria}")
-            status, data = self.connection.uid('SEARCH', None, search_criteria)
+            
+            # Handle UTF-8 search for non-ASCII characters
+            try:
+                if any(ord(c) > 127 for c in str(search_criteria)):
+                    # Use UTF-8 charset for non-ASCII
+                    status, data = self.connection.uid('SEARCH', 'UTF-8', search_criteria)
+                else:
+                    status, data = self.connection.uid('SEARCH', None, search_criteria)
+            except Exception as e:
+                logger.warning(f"UID search with charset failed: {e}, trying without")
+                status, data = self.connection.uid('SEARCH', None, search_criteria)
             
             if status != 'OK':
                 return [], 0

@@ -9,8 +9,8 @@ import hashlib
 import json
 from functools import lru_cache
 
-from ..connection_manager import ConnectionManager
-from ..account_manager import AccountManager
+from connection_manager import ConnectionManager
+from account_manager import AccountManager
 from .uid_search import UIDSearchEngine
 
 logger = logging.getLogger(__name__)

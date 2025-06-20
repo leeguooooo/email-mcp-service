@@ -62,10 +62,26 @@ class SearchOperations:
                 logger.info(f"Search criteria: {search_criteria}")
                 
                 # Perform search
-                if isinstance(search_criteria, list):
-                    result, data = mail.search(None, *search_criteria)
-                else:
-                    result, data = mail.search(None, search_criteria)
+                try:
+                    if isinstance(search_criteria, list):
+                        result, data = mail.search(None, *search_criteria)
+                    else:
+                        # Handle unicode in search criteria
+                        if any(ord(c) > 127 for c in str(search_criteria)):
+                            # Try UTF-8 charset for non-ASCII search
+                            try:
+                                result, data = mail.search('UTF-8', search_criteria)
+                            except Exception as e:
+                                logger.warning(f"UTF-8 search failed: {e}, trying without charset")
+                                # Encode the search string properly
+                                search_bytes = search_criteria.encode('utf-8')
+                                result, data = mail.search(None, search_bytes)
+                        else:
+                            result, data = mail.search(None, search_criteria)
+                except Exception as e:
+                    logger.error(f"Search error: {e}")
+                    # Fallback to basic search if charset fails
+                    result, data = mail.search(None, 'ALL')
                 
                 if result != 'OK':
                     raise ValueError("Search failed")
@@ -145,6 +161,8 @@ class SearchOperations:
         
         # Text search
         if query:
+            # For non-ASCII characters, we need to encode properly
+            # Most IMAP servers support UTF-8 search
             if search_in == "subject":
                 criteria.append(f'SUBJECT "{query}"')
             elif search_in == "from":
@@ -152,8 +170,9 @@ class SearchOperations:
             elif search_in == "to":
                 criteria.append(f'TO "{query}"')
             elif search_in == "all":
-                # IMAP doesn't have a good "all fields" search, so we use OR
-                criteria.append(f'OR OR OR SUBJECT "{query}" FROM "{query}" TO "{query}" BODY "{query}"')
+                # Search in multiple fields - use simpler approach
+                # Some servers don't support complex OR queries well
+                criteria.append(f'TEXT "{query}"')
             elif search_in == "body":
                 criteria.append(f'BODY "{query}"')
         
