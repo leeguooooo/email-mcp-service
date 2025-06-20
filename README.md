@@ -227,6 +227,17 @@ send_email with to=["user@example.com"] subject="文件" body="请查收附件" 
   - 垃圾邮件检测
   - 重要邮件识别
 
+## 🙏 致谢
+
+特别感谢以下项目和贡献者：
+
+- [pyisemail](https://github.com/michaelhelmick/pyisemail) - 提供了邮件验证的参考实现
+- [imaplib](https://docs.python.org/3/library/imaplib.html) - Python标准库的IMAP支持
+- [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) - Anthropic的开放协议
+- 所有提出Issue和PR的贡献者们
+
+如果这个项目对你有帮助，欢迎给个⭐️！
+
 ## 📝 许可证
 
 MIT License

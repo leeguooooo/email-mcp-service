@@ -225,6 +225,17 @@ Run `uv run python setup.py` to add multiple accounts. All commands operate on a
   - More detailed error logging
   - Graceful degradation handling
 
+## 🙏 Acknowledgments
+
+Special thanks to the following projects and contributors:
+
+- [pyisemail](https://github.com/michaelhelmick/pyisemail) - Reference implementation for email validation
+- [imaplib](https://docs.python.org/3/library/imaplib.html) - Python standard library IMAP support
+- [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) - Anthropic's open protocol
+- All contributors who submitted issues and PRs
+
+If this project helps you, please give it a ⭐️!
+
 ## 📝 License
 
 MIT License
