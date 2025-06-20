@@ -1,0 +1,77 @@
+{
+  "_metadata": {
+    "version": "1.0",
+    "description": "MCP Email Service Sync Configuration Example"
+  },
+  "sync": {
+    "enabled": true,
+    "auto_start": true,
+    "interval_minutes": 15,
+    "full_sync_hours": 24,
+    "startup_delay_seconds": 30,
+    "first_sync_days": 180,
+    "incremental_sync_days": 7
+  },
+  "quiet_hours": {
+    "enabled": false,
+    "start": "23:00",
+    "end": "06:00",
+    "timezone": "local"
+  },
+  "performance": {
+    "max_concurrent_accounts": 2,
+    "batch_size": 50,
+    "request_delay_ms": 100,
+    "timeout_seconds": 30,
+    "max_memory_mb": 512
+  },
+  "retry": {
+    "max_attempts": 3,
+    "delay_minutes": 5,
+    "exponential_backoff": true,
+    "max_delay_minutes": 60
+  },
+  "storage": {
+    "db_path": "email_sync.db",
+    "compress_content": true,
+    "vacuum_interval_days": 7,
+    "backup_enabled": true,
+    "backup_keep_days": 30
+  },
+  "cleanup": {
+    "enabled": true,
+    "days_to_keep": 90,
+    "cleanup_interval_hours": 24,
+    "soft_delete": true,
+    "compress_old_emails": true
+  },
+  "folders": {
+    "sync_all": true,
+    "exclude_folders": [
+      "[Gmail]/All Mail",
+      "[Gmail]/Important", 
+      "[Gmail]/Chats",
+      "Junk",
+      "Spam"
+    ],
+    "priority_folders": [
+      "INBOX",
+      "Sent",
+      "Drafts"
+    ]
+  },
+  "notifications": {
+    "enabled": false,
+    "new_emails": false,
+    "sync_completion": false,
+    "errors": true,
+    "webhook_url": null
+  },
+  "logging": {
+    "level": "INFO",
+    "file_enabled": true,
+    "file_path": "sync.log",
+    "max_file_size_mb": 10,
+    "backup_count": 5
+  }
+}

@@ -21,7 +21,10 @@ class SyncScheduler:
         """初始化调度器"""
         self.config_file = Path(config_file)
         self.config = self._load_config()
-        self.sync_manager = EmailSyncManager(self.config.get('db_path', 'email_sync.db'))
+        self.sync_manager = EmailSyncManager(
+            self.config.get('storage', {}).get('db_path', 'email_sync.db'),
+            self.config.get('sync', {})
+        )
         self.scheduler_thread = None
         self.running = False
         self.stop_event = threading.Event()

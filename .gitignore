@@ -75,6 +75,15 @@ accounts.json
 /attachments/
 /downloads/
 
+# Database files
+*.db
+*.db-wal
+*.db-shm
+email_sync.db*
+
+# Sync configuration (contains sensitive paths)
+sync_config.json
+
 # Temporary files
 *.tmp
 *.bak
@@ -83,4 +92,3 @@ accounts.json
 CLAUDE.md
 __pycache__/
 *.pyc
-*.bak

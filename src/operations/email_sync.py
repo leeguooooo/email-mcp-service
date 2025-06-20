@@ -19,12 +19,32 @@ logger = logging.getLogger(__name__)
 class EmailSyncManager:
     """邮件同步管理器"""
     
-    def __init__(self, db_path: str = "email_sync.db"):
+    def __init__(self, db_path: str = "email_sync.db", config: Dict[str, Any] = None):
         """初始化同步管理器"""
         self.account_manager = AccountManager()
         self.db = EmailSyncDatabase(db_path)
         self.sync_lock = threading.Lock()
         self.sync_status = {}
+        self.config = config or self._load_config()
+        
+    def _load_config(self) -> Dict[str, Any]:
+        """加载同步配置"""
+        try:
+            import json
+            from pathlib import Path
+            config_file = Path("sync_config.json")
+            if config_file.exists():
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                    return config.get('sync', {})
+        except Exception as e:
+            logger.warning(f"Failed to load sync config: {e}")
+        
+        # 返回默认配置
+        return {
+            "first_sync_days": 180,
+            "incremental_sync_days": 7
+        }
         
     def sync_all_accounts(self, full_sync: bool = False, max_workers: int = 3) -> Dict[str, Any]:
         """
@@ -207,11 +227,21 @@ class EmailSyncManager:
                 search_criteria = 'ALL'
                 logger.info(f"Full sync: processing all {total_messages} messages")
             else:
-                # 增量同步：只获取最近的邮件
-                days_back = 7  # 默认同步最近7天
-                date_from = (datetime.now() - timedelta(days=days_back)).strftime("%d-%b-%Y")
-                search_criteria = f'SINCE {date_from}'
-                logger.info(f"Incremental sync: processing messages since {date_from}")
+                # 检查是否是首次同步（数据库中没有该账户的邮件）
+                is_first_sync = self._is_first_sync(account_id)
+                
+                if is_first_sync:
+                    # 首次同步：获取配置的天数范围内的邮件
+                    days_back = self.config.get('first_sync_days', 180)  # 默认半年
+                    date_from = (datetime.now() - timedelta(days=days_back)).strftime("%d-%b-%Y")
+                    search_criteria = f'SINCE {date_from}'
+                    logger.info(f"First sync: processing messages since {date_from} (last {days_back} days)")
+                else:
+                    # 增量同步：获取配置的天数范围内的邮件
+                    days_back = self.config.get('incremental_sync_days', 7)  # 默认7天
+                    date_from = (datetime.now() - timedelta(days=days_back)).strftime("%d-%b-%Y")
+                    search_criteria = f'SINCE {date_from}'
+                    logger.info(f"Incremental sync: processing messages since {date_from} (last {days_back} days)")
             
             # 搜索邮件
             result, data = mail.search(None, search_criteria)
@@ -446,6 +476,19 @@ class EmailSyncManager:
             self.db.conn.commit()
         except Exception as e:
             logger.error(f"Failed to update account sync status: {e}")
+    
+    def _is_first_sync(self, account_id: str) -> bool:
+        """检查是否是账户的首次同步"""
+        try:
+            cursor = self.db.conn.execute(
+                "SELECT COUNT(*) FROM emails WHERE account_id = ?", 
+                (account_id,)
+            )
+            count = cursor.fetchone()[0]
+            return count == 0
+        except Exception as e:
+            logger.warning(f"Failed to check first sync status: {e}")
+            return True  # 出错时默认为首次同步，使用半年范围
     
     def get_sync_status(self) -> Dict[str, Any]:
         """获取同步状态"""
