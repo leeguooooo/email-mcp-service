@@ -188,6 +188,23 @@ class ConnectionManager:
             logger.error(f"SMTP connection error: {e}")
             raise ValueError(f"Failed to connect to SMTP server: {str(e)}")
     
+    def close_imap(self, mail: Optional[imaplib.IMAP4_SSL] = None):
+        """Close IMAP connection"""
+        if mail:
+            try:
+                mail.close()
+                mail.logout()
+            except:
+                pass
+    
+    def close_smtp(self, server: Optional[smtplib.SMTP] = None):
+        """Close SMTP connection"""
+        if server:
+            try:
+                server.quit()
+            except:
+                pass
+
     def test_connection(self) -> Dict[str, Any]:
         """Test both IMAP and SMTP connections"""
         result = {
@@ -209,7 +226,7 @@ class ConnectionManager:
             _, data = mail.search(None, 'UNSEEN')
             unread = len(data[0].split()) if data[0] else 0
             
-            mail.logout()
+            self.close_imap(mail)
             
             result['imap'] = {
                 'success': True,
@@ -222,7 +239,7 @@ class ConnectionManager:
         # Test SMTP
         try:
             server = self.connect_smtp()
-            server.quit()
+            self.close_smtp(server)
             result['smtp'] = {'success': True}
         except Exception as e:
             result['smtp']['error'] = str(e)

@@ -6,6 +6,7 @@ import logging
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 import email
+import email.message
 from email.header import decode_header
 import re
 
@@ -51,12 +52,19 @@ class UIDSearchEngine:
             try:
                 if any(ord(c) > 127 for c in str(search_criteria)):
                     # Use UTF-8 charset for non-ASCII
-                    status, data = self.connection.uid('SEARCH', 'UTF-8', search_criteria)
+                    try:
+                        status, data = self.connection.uid('SEARCH', 'UTF-8', search_criteria)
+                    except Exception as e:
+                        logger.warning(f"UTF-8 charset search failed: {e}, trying with encoded bytes")
+                        # Encode the search criteria as UTF-8 bytes
+                        search_bytes = search_criteria.encode('utf-8')
+                        status, data = self.connection.uid('SEARCH', None, search_bytes)
                 else:
                     status, data = self.connection.uid('SEARCH', None, search_criteria)
             except Exception as e:
-                logger.warning(f"UID search with charset failed: {e}, trying without")
-                status, data = self.connection.uid('SEARCH', None, search_criteria)
+                logger.warning(f"UID search failed: {e}, trying fallback")
+                # Fallback to simple ALL search
+                status, data = self.connection.uid('SEARCH', None, 'ALL')
             
             if status != 'OK':
                 return [], 0
@@ -160,10 +168,10 @@ class UIDSearchEngine:
             elif search_in == "body":
                 criteria_parts.append(f'BODY "{encoded_query}"')
             else:  # all
-                # Use OR for multiple fields
+                # Use nested OR for multiple fields (IMAP OR only takes 2 arguments)
                 criteria_parts.append(
-                    f'OR OR OR SUBJECT "{encoded_query}" FROM "{encoded_query}" '
-                    f'TO "{encoded_query}" BODY "{encoded_query}"'
+                    f'OR (OR SUBJECT "{encoded_query}" FROM "{encoded_query}") '
+                    f'(OR TO "{encoded_query}" BODY "{encoded_query}")'
                 )
         
         # Join criteria
@@ -175,12 +183,12 @@ class UIDSearchEngine:
     def _encode_search_query(self, query: str) -> str:
         """Encode query for IMAP search, handling CJK characters"""
         try:
-            # Try UTF-8 encoding first
+            # Try ASCII encoding first
             query.encode('ascii')
             return query
         except UnicodeEncodeError:
-            # For non-ASCII (Chinese, Japanese, etc.), use UTF-8
-            # Some IMAP servers support CHARSET UTF-8
+            # For non-ASCII characters, return as-is
+            # We'll handle encoding at the search level
             return query
     
     def _format_date(self, date_str: str) -> str:
@@ -237,12 +245,14 @@ class UIDSearchEngine:
             
             email_data = {
                 'uid': uid,
+                'id': uid,  # Add id field for compatibility
                 'subject': subject,
                 'from': from_addr,
                 'to': to_addr,
                 'date': date_str,
                 'timestamp': timestamp,
                 'is_read': is_read,
+                'unread': not is_read,  # Add unread field for compatibility
                 'is_flagged': is_flagged,
                 'has_attachments': self._has_attachments(msg)
             }
