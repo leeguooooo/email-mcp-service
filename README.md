@@ -28,6 +28,18 @@ uv sync
 uv run python setup.py
 ```
 
+### 3. 初始化数据库和同步配置
+
+首次使用需要创建配置文件：
+
+```bash
+# 复制配置示例文件
+cp sync_config.json.example sync_config.json
+
+# 数据库会在首次同步时自动创建
+# 首次同步会获取最近6个月的邮件历史
+```
+
 #### 邮箱配置说明
 
 | 邮箱 | 配置步骤 |
@@ -37,7 +49,7 @@ uv run python setup.py
 | **Gmail** | 开启两步验证 → [生成应用密码](https://myaccount.google.com/apppasswords) |
 | **Outlook** | 直接使用邮箱密码 |
 
-### 3. 集成到 MCP 客户端
+### 4. 集成到 MCP 客户端
 
 在 MCP 客户端（如 Claude Desktop）配置文件中添加：
 
@@ -84,19 +96,50 @@ reply_email with email_id="123" body="回复内容"
 
 ## 所有可用命令
 
+### 邮件操作
 - `list_emails` - 列出邮件
 - `get_email_detail` - 查看邮件详情
 - `search_emails` - 搜索邮件
 - `mark_emails` - 标记已读/未读
 - `delete_emails` - 删除邮件
 - `flag_email` - 星标邮件
+
+### 发送邮件
 - `send_email` - 发送邮件
 - `reply_email` - 回复邮件
 - `forward_email` - 转发邮件
+
+### 邮件管理
 - `move_emails_to_folder` - 移动邮件
 - `list_folders` - 查看文件夹
 - `get_email_attachments` - 获取附件
+
+### 系统管理
 - `check_connection` - 测试连接
+- `list_accounts` - 查看已配置账户
+- `sync_emails` - 手动同步邮件数据库
+
+### 数据库同步功能
+
+```bash
+# 查看同步状态
+sync_emails with action="status"
+
+# 手动触发同步
+sync_emails with action="force"
+
+# 启动后台自动同步
+sync_emails with action="start"
+
+# 停止后台同步
+sync_emails with action="stop"
+```
+
+**同步机制说明：**
+- 首次同步：自动获取最近6个月的邮件历史
+- 增量同步：每15分钟同步最近7天的新邮件
+- 完全同步：每天凌晨2点进行完整同步
+- 离线浏览：同步后的邮件可离线查看和搜索
 
 ## 常见问题
 
