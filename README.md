@@ -1,20 +1,20 @@
 # MCP Email Service
 
-支持多邮箱账户统一管理的 MCP 邮件服务。
+A unified MCP email service supporting multi-account management.
 
-## 支持的邮箱
+## Supported Email Providers
 
-- **163邮箱** (mail.163.com / mail.126.com)
-- **QQ邮箱** (mail.qq.com)  
+- **163 Mail** (mail.163.com / mail.126.com)
+- **QQ Mail** (mail.qq.com)  
 - **Gmail** (mail.google.com)
 - **Outlook/Hotmail**
-- **自定义IMAP邮箱**
+- **Custom IMAP servers**
 
-## 快速开始
+## Quick Start
 
-### 1. 安装
+### 1. Installation
 
-需要 Python 3.11+ 和 [UV](https://github.com/astral-sh/uv)。
+Requires Python 3.11+ and [UV](https://github.com/astral-sh/uv).
 
 ```bash
 git clone https://github.com/leeguooooo/email-mcp-service.git
@@ -22,138 +22,88 @@ cd mcp-email-service
 uv sync
 ```
 
-### 2. 配置邮箱
+### 2. Configure Email Accounts
 
 ```bash
 uv run python setup.py
 ```
 
-### 3. 初始化数据库和同步
+#### Email Configuration Guide
 
-```bash
-# 交互式模式（推荐新手）
-uv run python init_sync.py
+| Provider | Configuration Steps |
+|----------|-------------------|
+| **163 Mail** | Login to mail.163.com → Settings → Enable IMAP → Get authorization code (use code, not password) |
+| **QQ Mail** | Settings → Account → Enable IMAP → Generate authorization code |
+| **Gmail** | Enable 2FA → [Generate app password](https://myaccount.google.com/apppasswords) |
+| **Outlook** | Use email password directly |
 
-# 直接初始化数据库
-uv run python init_sync.py init
+### 3. Add to MCP Client
 
-# 启动后台守护进程（持续同步）
-uv run python init_sync.py daemon
-```
-
-**功能说明：**
-- 自动创建配置文件
-- 检查邮箱账户配置  
-- 初始化数据库并同步最近6个月的邮件
-- 支持后台守护进程模式持续同步
-
-#### 邮箱配置说明
-
-| 邮箱 | 配置步骤 |
-|-----|---------|
-| **163邮箱** | 登录 mail.163.com → 设置 → 开启IMAP → 获取授权码（使用授权码，不是密码） |
-| **QQ邮箱** | 设置 → 账户 → 开启IMAP → 生成授权码 |
-| **Gmail** | 开启两步验证 → [生成应用密码](https://myaccount.google.com/apppasswords) |
-| **Outlook** | 直接使用邮箱密码 |
-
-### 4. 集成到 MCP 客户端
-
-在 MCP 客户端（如 Claude Desktop）配置文件中添加：
+Add to your MCP client (e.g., Claude Desktop) config:
 
 ```json
 {
     "mcpServers": {
         "mcp-email-service": {
-            "command": "/你的路径/mcp-email-service/run.sh",
+            "command": "/your/path/mcp-email-service/run.sh",
             "args": []
         }
     }
 }
 ```
 
-## 主要功能
+## Main Features
 
-### 查看邮件
+### View Emails
 ```bash
-list_emails                              # 查看未读邮件
-list_emails with unread_only=false       # 查看所有邮件
-list_emails with limit=100               # 查看更多邮件
+list_emails                              # View unread emails
+list_emails with unread_only=false       # View all emails
+list_emails with limit=100               # View more emails
 ```
 
-### 搜索邮件
+### Search Emails
 ```bash
-search_emails with query="会议"                    # 搜索包含"会议"的邮件
-search_emails with query="张三" search_in="from"   # 搜索发件人
-search_emails with date_from="2024-01-01"         # 按日期搜索
+search_emails with query="meeting"                 # Search emails containing "meeting"
+search_emails with query="john" search_in="from"   # Search by sender
+search_emails with date_from="2024-01-01"         # Search by date
 ```
 
-### 邮件操作
+### Email Operations
 ```bash
-get_email_detail with email_id="123"              # 查看邮件详情
-mark_emails with email_ids=["123"] mark_as="read" # 标记已读
-delete_emails with email_ids=["123"]              # 删除邮件
-flag_email with email_id="123" set_flag=true      # 添加星标
+get_email_detail with email_id="123"              # View email details
+mark_emails with email_ids=["123"] mark_as="read" # Mark as read
+delete_emails with email_ids=["123"]              # Delete email
+flag_email with email_id="123" set_flag=true      # Add star
 ```
 
-### 发送邮件
+### Send Emails
 ```bash
-send_email with to=["user@example.com"] subject="标题" body="内容"
-reply_email with email_id="123" body="回复内容"
+send_email with to=["user@example.com"] subject="Subject" body="Content"
+reply_email with email_id="123" body="Reply content"
 ```
 
-## 所有可用命令
+## Available Commands
 
-### 邮件操作
-- `list_emails` - 列出邮件
-- `get_email_detail` - 查看邮件详情
-- `search_emails` - 搜索邮件
-- `mark_emails` - 标记已读/未读
-- `delete_emails` - 删除邮件
-- `flag_email` - 星标邮件
+- `list_emails` - List emails
+- `get_email_detail` - View email details
+- `search_emails` - Search emails
+- `mark_emails` - Mark as read/unread
+- `delete_emails` - Delete emails
+- `flag_email` - Star/unstar emails
+- `send_email` - Send new email
+- `reply_email` - Reply to email
+- `forward_email` - Forward email
+- `move_emails_to_folder` - Move emails
+- `list_folders` - View folders
+- `get_email_attachments` - Get attachments
+- `check_connection` - Test connections
 
-### 发送邮件
-- `send_email` - 发送邮件
-- `reply_email` - 回复邮件
-- `forward_email` - 转发邮件
+## Troubleshooting
 
-### 邮件管理
-- `move_emails_to_folder` - 移动邮件
-- `list_folders` - 查看文件夹
-- `get_email_attachments` - 获取附件
+1. **Login Failed**: 163/QQ Mail use authorization codes, Gmail uses app passwords
+2. **Can't Find Emails**: Default shows unread only, use `unread_only=false`
+3. **Connection Timeout**: Check network and firewall settings
 
-### 系统管理
-- `check_connection` - 测试连接
-- `list_accounts` - 查看已配置账户
-- `sync_emails` - 手动同步邮件数据库
-
-### 数据库同步功能
-
-```bash
-# 查看同步状态
-sync_emails with action="status"
-
-# 手动触发同步
-sync_emails with action="force"
-
-# 启动后台自动同步
-sync_emails with action="start"
-
-# 停止后台同步
-sync_emails with action="stop"
-```
-
-**同步机制说明：**
-- 首次同步：自动获取最近6个月的邮件历史
-- 增量同步：每15分钟同步最近7天的新邮件
-- 完全同步：每天凌晨2点进行完整同步
-- 离线浏览：同步后的邮件可离线查看和搜索
-
-## 常见问题
-
-1. **登录失败**：163/QQ邮箱使用授权码，Gmail使用应用密码
-2. **找不到邮件**：默认只显示未读，使用 `unread_only=false`
-3. **连接超时**：检查网络和防火墙设置
-
-## 许可证
+## License
 
 MIT License
