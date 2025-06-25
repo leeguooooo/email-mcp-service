@@ -5,43 +5,11 @@ author:
   name: leeguooooo
   url: https://github.com/leeguooooo
 
-# MCP server configuration
 mcp:
   type: stdio
-  localOnly: true
 
-# Configuration schema for email accounts
 configSchema:
   type: object
-  properties:
-    emailSetupRequired:
-      type: boolean
-      description: "Run setup.py on first launch to configure email accounts"
-      default: true
-  required: []
+  properties: {}
 
-# Command function to start the server
-commandFunction: |
-  (config) => {
-    return {
-      command: ".venv/bin/python",
-      args: ["smithery_wrapper.py"],
-      cwd: `${process.env.HOME}/.config/smithery/servers/mcp-email-service`,
-      env: {
-        PYTHONUNBUFFERED: "1",
-        PYTHONPATH: "src"
-      }
-    };
-  }
-
-# Install via pip instead of uv to avoid Docker issues
-installCommand:
-  command: sh
-  args:
-    - -c
-    - |
-      cd "$HOME/.config/smithery/servers" &&
-      git clone https://github.com/leeguooooo/email-mcp-service.git mcp-email-service &&
-      cd mcp-email-service &&
-      python3 -m venv .venv &&
-      .venv/bin/pip install -r requirements.txt
+startCommand: python3 smithery_wrapper.py

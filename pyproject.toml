@@ -1,6 +1,6 @@
 [project]
 name = "mcp-email-service"
-version = "1.0.0"
+version = "1.0.5"
 description = "MCP (Model Context Protocol) service for multi-provider email management"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -20,6 +20,9 @@ test = [
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.0.0",
 ]
+
+[project.scripts]
+mcp-email-service = "src.main:main"
 
 [build-system]
 requires = ["hatchling"]
