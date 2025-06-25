@@ -17,6 +17,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the entire project
 COPY . .
 
+# Create accounts.json placeholder if it doesn't exist
+RUN touch accounts.json && echo "[]" > accounts.json
+
 # Create a non-root user
 RUN useradd -m -u 1000 mcpuser && \
     chown -R mcpuser:mcpuser /app
@@ -26,6 +29,7 @@ USER mcpuser
 
 # Set Python to run in unbuffered mode
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app/src:$PYTHONPATH
 
 # The command will be provided by smithery.yaml
-CMD ["python", "src/main.py"]
+CMD ["python", "smithery_wrapper.py"]
