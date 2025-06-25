@@ -29,7 +29,7 @@ USER mcpuser
 
 # Set Python to run in unbuffered mode
 ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/app/src:$PYTHONPATH
+ENV PYTHONPATH=/app/src:/app
 
 # The command will be provided by smithery.yaml
 CMD ["python", "smithery_wrapper.py"]
