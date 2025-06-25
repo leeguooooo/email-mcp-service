@@ -12,7 +12,19 @@ A unified MCP email service supporting multi-account management.
 
 ## Quick Start
 
-### 1. Installation
+### Option 1: Install via Smithery (Recommended)
+
+```bash
+npx -y @smithery/cli install mcp-email-service --client claude
+```
+
+After installation, you'll need to configure your email accounts:
+```bash
+cd ~/.config/smithery/servers/mcp-email-service
+python setup.py
+```
+
+### Option 2: Manual Installation
 
 Requires Python 3.11+ and [UV](https://github.com/astral-sh/uv).
 
@@ -37,9 +49,9 @@ uv run python setup.py
 | **Gmail** | Enable 2FA → [Generate app password](https://myaccount.google.com/apppasswords) |
 | **Outlook** | Use email password directly |
 
-### 3. Add to MCP Client
+### 3. Add to MCP Client (Manual Installation Only)
 
-Add to your MCP client (e.g., Claude Desktop) config:
+If you installed manually, add to your MCP client (e.g., Claude Desktop) config:
 
 ```json
 {
