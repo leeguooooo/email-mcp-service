@@ -18,7 +18,9 @@ from account_manager import AccountManager
 logger = logging.getLogger(__name__)
 
 # Initialize account manager
-account_manager = AccountManager()
+# Use parent directory's accounts.json when running from src/
+config_path = Path(__file__).parent.parent / "accounts.json"
+account_manager = AccountManager(str(config_path))
 
 def get_connection_manager(account_id: Optional[str] = None) -> ConnectionManager:
     """Get connection manager for account"""
@@ -121,6 +123,10 @@ def check_connection():
 
 def fetch_emails(limit=50, unread_only=False, folder="INBOX", account_id=None):
     """Fetch emails from account"""
+    # 最少显示50封
+    if limit < 50:
+        limit = 50
+    
     try:
         # If no specific account, fetch from all accounts
         if account_id is None and account_manager.list_accounts():
@@ -206,6 +212,10 @@ def fetch_emails(limit=50, unread_only=False, folder="INBOX", account_id=None):
 
 def fetch_emails_multi_account(limit=50, unread_only=False, folder="INBOX"):
     """Fetch emails from multiple accounts (now using parallel fetching)"""
+    # 最少显示50封
+    if limit < 50:
+        limit = 50
+    
     accounts = account_manager.list_accounts()
     
     if not accounts:

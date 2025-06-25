@@ -1,0 +1,67 @@
+{
+  "hybrid_mode": {
+    "enabled": true,
+    "description": "启用混合查询模式 - 结合本地缓存和远程查询",
+    
+    "cache_settings": {
+      "freshness_threshold_minutes": 5,
+      "description": "数据新鲜度阈值（分钟）- 超过此时间将从远程获取",
+      
+      "auto_sync_on_search": true,
+      "description_auto_sync": "搜索时自动触发快速同步",
+      
+      "priority_folders": ["INBOX", "Sent", "Drafts"],
+      "description_priority": "优先同步的文件夹列表"
+    },
+    
+    "query_strategy": {
+      "unread_always_fresh": true,
+      "description_unread": "未读邮件查询总是获取最新数据",
+      
+      "search_recent_days": 7,
+      "description_search": "搜索最近N天的邮件时强制更新",
+      
+      "min_search_results": 5,
+      "description_min_results": "搜索结果少于此数量时尝试远程搜索"
+    },
+    
+    "performance": {
+      "quick_sync_timeout_seconds": 10,
+      "description_timeout": "快速同步超时时间（秒）",
+      
+      "max_quick_sync_emails": 20,
+      "description_max_emails": "快速同步时每个文件夹最多获取的邮件数",
+      
+      "parallel_account_sync": true,
+      "description_parallel": "是否并行同步多个账户"
+    },
+    
+    "fallback": {
+      "use_cache_on_error": true,
+      "description_error": "远程查询失败时使用缓存数据",
+      
+      "add_warning_on_stale": true,
+      "description_warning": "使用过期数据时添加警告提示"
+    }
+  },
+  
+  "tool_settings": {
+    "default_use_cache": null,
+    "description": "工具默认缓存使用策略 (null=自动, true=优先缓存, false=总是远程)",
+    
+    "tool_overrides": {
+      "list_emails": {
+        "use_cache": null,
+        "freshness_threshold_minutes": 5
+      },
+      "search_emails": {
+        "use_cache": null,
+        "freshness_threshold_minutes": 10
+      },
+      "get_email_detail": {
+        "use_cache": false,
+        "description": "邮件详情总是从远程获取以确保完整性"
+      }
+    }
+  }
+}

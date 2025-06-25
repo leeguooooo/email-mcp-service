@@ -38,19 +38,24 @@ class EmailToolHandlers:
         try:
             # Check if we should use optimized fetch
             unread_only = args.get('unread_only', False)
-            limit = args.get('limit', 50)
+            limit = args.get('limit', 100)
+            # 最少显示50封
+            if limit < 50:
+                limit = 50
             folder = args.get('folder', 'INBOX')
             account_id = args.get('account_id')
             
-            # If fetching all unread from all accounts/folders
-            if unread_only and not account_id and folder == 'INBOX':
+            # If fetching unread emails, use database for accurate status
+            if unread_only:
                 try:
-                    from operations.optimized_fetch import fetch_all_providers_optimized
-                    result = fetch_all_providers_optimized(limit, unread_only)
+                    from operations.database_fetch import fetch_emails_from_database
+                    logger.info("Using database fetch for unread emails (accurate read status)")
+                    result = fetch_emails_from_database(limit, unread_only, account_id)
                 except ImportError:
-                    logger.warning("Optimized fetch not available, using standard fetch")
+                    logger.warning("Database fetch not available, using standard fetch")
                     result = fetch_emails(limit, unread_only, folder, account_id)
             else:
+                # Regular fetch for all emails
                 result = fetch_emails(limit, unread_only, folder, account_id)
             
             if 'error' in result:
@@ -72,11 +77,20 @@ class EmailToolHandlers:
     def handle_get_email_detail(args: Dict[str, Any], ctx: ToolContext) -> List[Dict[str, Any]]:
         """Handle get_email_detail tool"""
         try:
-            result = get_email_detail(
-                args['email_id'],
-                args.get('folder', 'INBOX'),
-                args.get('account_id')
-            )
+            # Try new improved function first
+            try:
+                from operations.improved_email_ops import get_email_detail_by_db_id
+                result = get_email_detail_by_db_id(
+                    args['email_id'],
+                    args.get('account_id')
+                )
+            except ImportError:
+                # Fallback to legacy function
+                result = get_email_detail(
+                    args['email_id'],
+                    args.get('folder', 'INBOX'),
+                    args.get('account_id')
+                )
             
             if 'error' in result:
                 return [{
@@ -169,58 +183,82 @@ class EmailToolHandlers:
             trash_folder = args.get('trash_folder', 'Trash')
             account_id = args.get('account_id')
             
-            # Use parallel operations if available and multiple emails
-            if len(email_ids) > 1:
-                try:
-                    from operations.parallel_operations import parallel_ops, batch_ops
-                    if permanent:
-                        result = parallel_ops.execute_batch_operation(
-                            batch_ops.batch_delete_emails,
-                            email_ids,
-                            folder,
-                            account_id
-                        )
-                    else:
-                        result = parallel_ops.execute_batch_operation(
-                            batch_ops.batch_move_emails,
-                            email_ids,
-                            folder,
-                            account_id,
-                            target_folder=trash_folder
-                        )
-                except ImportError:
-                    # Fallback to sequential
-                    results = []
-                    for email_id in email_ids:
+            # Try improved delete function first
+            try:
+                from operations.improved_email_ops import delete_emails_by_db_ids
+                result = delete_emails_by_db_ids(email_ids, permanent)
+            except ImportError:
+                # Fallback to legacy operations
+                if len(email_ids) > 1:
+                    try:
+                        from operations.parallel_operations import parallel_ops, batch_ops
                         if permanent:
-                            res = delete_email(email_id, folder, account_id)
+                            result = parallel_ops.execute_batch_operation(
+                                batch_ops.batch_delete_emails,
+                                email_ids,
+                                folder,
+                                account_id
+                            )
                         else:
-                            res = move_email_to_trash(email_id, folder, trash_folder, account_id)
-                        results.append(res)
-                    
-                    success_count = sum(1 for r in results if r.get('success'))
-                    result = {
-                        'success': success_count == len(results),
-                        'deleted_count': success_count,
-                        'total': len(results)
-                    }
-            else:
-                # Single email
-                email_id = email_ids[0]
-                if permanent:
-                    result = delete_email(email_id, folder, account_id)
+                            result = parallel_ops.execute_batch_operation(
+                                batch_ops.batch_move_emails,
+                                email_ids,
+                                folder,
+                                account_id,
+                                target_folder=trash_folder
+                            )
+                    except ImportError:
+                        logger.info("Parallel operations not available, using sequential delete")
+                        # Fallback to sequential
+                        results = []
+                        errors = []
+                        for email_id in email_ids:
+                            try:
+                                if permanent:
+                                    res = delete_email(email_id, folder, account_id)
+                                else:
+                                    res = move_email_to_trash(email_id, folder, trash_folder, account_id)
+                                results.append(res)
+                                if not res.get('success'):
+                                    errors.append(f"Email {email_id}: {res.get('error', 'Unknown error')}")
+                            except Exception as e:
+                                errors.append(f"Email {email_id}: {str(e)}")
+                                results.append({'success': False, 'error': str(e)})
+                        
+                        success_count = sum(1 for r in results if r.get('success'))
+                        result = {
+                            'success': success_count == len(results),
+                            'deleted_count': success_count,
+                            'total': len(results)
+                        }
+                        if errors:
+                            result['errors'] = errors
                 else:
-                    result = move_email_to_trash(email_id, folder, trash_folder, account_id)
+                    # Single email
+                    email_id = email_ids[0]
+                    if permanent:
+                        result = delete_email(email_id, folder, account_id)
+                    else:
+                        result = move_email_to_trash(email_id, folder, trash_folder, account_id)
             
             if result.get('success'):
+                deleted_count = result.get('deleted_count', len(email_ids) if isinstance(email_ids, list) else 1)
+                action_text = "永久删除" if permanent else "移到垃圾箱"
                 return [{
                     "type": "text",
-                    "text": ctx.get_message('operation_success')
+                    "text": f"✅ 成功{action_text} {deleted_count} 封邮件"
                 }]
             else:
+                error_msg = result.get('error', 'Unknown error')
+                if result.get('errors'):
+                    error_msg = '\n'.join(result['errors'])
+                elif result.get('deleted_count', 0) > 0:
+                    total = result.get('total', len(email_ids) if isinstance(email_ids, list) else 1)
+                    error_msg = f"部分成功: 删除了 {result['deleted_count']}/{total} 封邮件\n{error_msg}"
+                
                 return [{
                     "type": "text",
-                    "text": f"{ctx.get_message('operation_failed')}{result.get('error', 'Unknown error')}"
+                    "text": f"{ctx.get_message('operation_failed')}{error_msg}"
                 }]
                 
         except Exception as e:
@@ -244,7 +282,7 @@ class EmailToolHandlers:
                     date_to=args.get('date_to'),
                     folder=args.get('folder', 'all'),
                     unread_only=args.get('unread_only', False),
-                    limit=args.get('limit', 50),
+                    limit=args.get('limit', 100),
                     account_id=args.get('account_id')
                 )
             except ImportError:
@@ -259,7 +297,7 @@ class EmailToolHandlers:
                     folder=args.get('folder', 'INBOX'),
                     unread_only=args.get('unread_only', False),
                     has_attachments=args.get('has_attachments'),
-                    limit=args.get('limit', 50)
+                    limit=args.get('limit', 100)
                 )
             
             if not result.get('success', True):
@@ -279,69 +317,100 @@ class EmailToolHandlers:
     
     @staticmethod
     def _format_email_list(result: Dict[str, Any], ctx: ToolContext) -> List[Dict[str, Any]]:
-        """Format email list for display"""
+        """Format email list for display - concise grouped format"""
         emails = result.get('emails', [])
         
         if not emails:
             return [{"type": "text", "text": ctx.get_message('no_email')}]
         
-        response = []
-        
-        # Summary
-        if 'accounts_count' in result:
-            summary = ctx.get_message('found_emails', 
-                len(emails), 
-                result.get('total_emails', 0),
-                result.get('total_unread', 0)
-            )
-            response.append({"type": "text", "text": summary})
-            
-            if result['accounts_count'] > 0:
-                response.append({
-                    "type": "text",
-                    "text": ctx.get_message('from_accounts', result['accounts_count'])
-                })
-        
-        # Email list
-        email_list = []
+        # Group emails by account
+        emails_by_account = {}
         for email in emails:
-            mark = ctx.get_message('unread_mark') if email.get('unread') else ctx.get_message('read_mark')
-            
-            email_info = f"{mark}{email['subject']}\n"
-            email_info += f"  {ctx.get_message('from')}{email['from']}\n"
-            email_info += f"  {ctx.get_message('date')}{email['date']}\n"
-            email_info += f"  {ctx.get_message('id')}{email['id']}"
-            
-            if 'account' in email:
-                email_info += f"\n  {ctx.get_message('account')}{email['account']}"
-            
-            email_list.append(email_info)
+            account = email.get('account', 'Unknown')
+            if account not in emails_by_account:
+                emails_by_account[account] = []
+            emails_by_account[account].append(email)
         
-        response.append({
-            "type": "text",
-            "text": "\n\n".join(email_list)
-        })
+        # Build concise output
+        output_lines = []
         
-        # Performance metrics
+        # Summary line
+        total_emails = len(emails)
+        total_unread = sum(1 for e in emails if e.get('unread'))
+        output_lines.append(f"📧 {total_emails} 封邮件 ({total_unread} 未读)")
+        output_lines.append("💡 使用 get_email_detail 工具和 [ID] 查看详情")
+        output_lines.append("🗑️ 使用 delete_emails 工具和 [ID] 删除邮件")
+        output_lines.append("")
+        
+        # Format each account's emails
+        for account, account_emails in emails_by_account.items():
+            # Account header with count
+            unread_count = sum(1 for e in account_emails if e.get('unread'))
+            output_lines.append(f"📮 {account} ({len(account_emails)}封，{unread_count}未读)")
+            output_lines.append("")
+            
+            # Email entries - ultra-concise single line format
+            for email in account_emails[:50]:  # Limit per account
+                # Use symbols: 🔴 for unread, nothing for read
+                mark = "🔴" if email.get('unread') else "  "
+                
+                # Truncate subject if too long
+                subject = email.get('subject', 'No subject')
+                if len(subject) > 50:
+                    subject = subject[:47] + "..."
+                
+                # Extract sender name (before email address)
+                sender = email.get('from', 'Unknown')
+                if '<' in sender:
+                    sender = sender.split('<')[0].strip()
+                if len(sender) > 15:
+                    sender = sender[:12] + "..."
+                
+                # Format date/time to MM-DD HH:MM
+                date_str = email.get('date', '')
+                # Try to parse and format date
+                try:
+                    from datetime import datetime
+                    # Handle various date formats
+                    if 'T' in date_str:  # ISO format
+                        dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                    else:
+                        # Try to parse other formats
+                        parts = date_str.split()
+                        if len(parts) >= 5:  # Full email date format
+                            dt = datetime.strptime(' '.join(parts[1:5]), '%d %b %Y %H:%M:%S')
+                        else:
+                            dt = None
+                    
+                    if dt:
+                        date_str = dt.strftime('%m-%d %H:%M')
+                except:
+                    # Fallback - just take first 10 chars if too long
+                    if len(date_str) > 10:
+                        date_str = date_str[:10]
+                
+                # Build compact line: mark [ID] Subject | Sender | Time
+                email_id = email.get('id', 'no-id')
+                if len(str(email_id)) > 8:
+                    email_id = str(email_id)[:8]
+                
+                # 使用方括号让ID更明显
+                line = f"{mark}[{email_id}] {subject} | {sender} | {date_str}"
+                output_lines.append(line)
+            
+            if len(account_emails) > 50:
+                output_lines.append(f"  ... 还有 {len(account_emails) - 50} 封")
+            
+            output_lines.append("")  # Empty line between accounts
+        
+        # Add performance info if available
         if 'fetch_time' in result:
-            response.append({
-                "type": "text",
-                "text": ctx.get_message('fetch_time', result['fetch_time'])
-            })
+            output_lines.append(f"⏱️ 耗时 {result['fetch_time']:.1f}秒")
         
-        # Account details
-        if 'accounts_info' in result and result['accounts_info']:
-            account_details = [ctx.get_message('account_stats')]
-            for acc in result['accounts_info']:
-                detail = f"  • {acc['account']}: {ctx.get_message('emails_count', acc['fetched'], acc['total'], acc['unread'])}"
-                account_details.append(detail)
-            
-            response.append({
-                "type": "text",
-                "text": "\n".join(account_details)
-            })
-        
-        return response
+        return [{
+            "type": "text",
+            "text": "\n".join(output_lines).strip()
+        }]
     
     @staticmethod
     def _format_email_detail(email: Dict[str, Any], ctx: ToolContext) -> List[Dict[str, Any]]:

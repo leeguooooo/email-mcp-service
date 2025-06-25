@@ -28,16 +28,12 @@ class SyncHandlers:
             return SyncHandlers._handle_force_sync(args, ctx)
         elif action == 'status':
             return SyncHandlers._handle_sync_status(args, ctx)
-        elif action == 'search':
-            return SyncHandlers._handle_search_cached_emails(args, ctx)
-        elif action == 'recent':
-            return SyncHandlers._handle_get_recent_cached_emails(args, ctx)
         elif action == 'config':
             return SyncHandlers._handle_config_management(args, ctx)
         else:
             return [{
                 "type": "text",
-                "text": f"❌ 未知操作: {action}。支持的操作: start, stop, force, status, search, recent, config"
+                "text": f"❌ 未知操作: {action}。支持的操作: start, stop, force, status, config"
             }]
     
     @staticmethod
@@ -164,7 +160,15 @@ class SyncHandlers:
                 for account in accounts[:5]:  # 最多显示5个账户
                     last_sync = account.get('last_sync')
                     if last_sync:
-                        last_sync_str = datetime.fromisoformat(last_sync).strftime('%m-%d %H:%M')
+                        try:
+                            from utils.timezone_helper import format_timestamp
+                            last_sync_str = format_timestamp(last_sync, '%m-%d %H:%M', show_timezone=False)
+                        except:
+                            # 如果转换失败，使用原始格式
+                            try:
+                                last_sync_str = datetime.fromisoformat(last_sync).strftime('%m-%d %H:%M')
+                            except:
+                                last_sync_str = last_sync
                     else:
                         last_sync_str = "从未同步"
                     
@@ -268,7 +272,10 @@ class SyncHandlers:
         """获取最近的缓存邮件"""
         try:
             account_id = args.get('account_id')
-            limit = args.get('limit', 20)
+            limit = args.get('limit', 50)
+            # 最少显示50封
+            if limit < 50:
+                limit = 50
             
             sync_manager = EmailSyncManager()
             emails = sync_manager.get_recent_emails(account_id, limit)

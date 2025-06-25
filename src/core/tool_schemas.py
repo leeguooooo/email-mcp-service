@@ -8,8 +8,8 @@ LIST_EMAILS_SCHEMA = {
     "properties": {
         "limit": {
             "type": "integer",
-            "description": "Maximum number of emails to return (default: 50)",
-            "default": 50
+            "description": "Maximum number of emails to return (最少50封, default: 100)",
+            "default": 100
         },
         "unread_only": {
             "type": "boolean",
@@ -378,8 +378,8 @@ SYNC_EMAILS_SCHEMA = {
     "properties": {
         "action": {
             "type": "string",
-            "enum": ["start", "stop", "force", "status", "search", "recent", "config"],
-            "description": "Action to perform: start/stop scheduler, force sync, get status, search cached emails, get recent emails, or manage config"
+            "enum": ["start", "stop", "force", "status", "config"],
+            "description": "Action to perform: start/stop scheduler, force sync, get status, or manage config"
         },
         "full_sync": {
             "type": "boolean",
@@ -388,16 +388,7 @@ SYNC_EMAILS_SCHEMA = {
         },
         "account_id": {
             "type": "string", 
-            "description": "For 'force', 'search', 'recent': target specific account only (optional)"
-        },
-        "query": {
-            "type": "string",
-            "description": "For 'search' action: search query keywords"
-        },
-        "limit": {
-            "type": "integer",
-            "description": "For 'search', 'recent' actions: maximum number of results",
-            "default": 20
+            "description": "For 'force' action: target specific account only (optional)"
         },
         "config_updates": {
             "type": "object",

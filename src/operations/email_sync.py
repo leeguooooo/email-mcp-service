@@ -465,7 +465,7 @@ class EmailSyncManager:
     def _update_account_sync_status(self, account_id: str, status: str, total_emails: int):
         """更新账户同步状态"""
         try:
-            self.db.conn.execute("""
+            self.db.execute("""
                 UPDATE accounts SET 
                     last_sync = CURRENT_TIMESTAMP,
                     sync_status = ?,
@@ -473,18 +473,20 @@ class EmailSyncManager:
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             """, (status, total_emails, account_id))
-            self.db.conn.commit()
         except Exception as e:
             logger.error(f"Failed to update account sync status: {e}")
     
     def _is_first_sync(self, account_id: str) -> bool:
         """检查是否是账户的首次同步"""
         try:
-            cursor = self.db.conn.execute(
-                "SELECT COUNT(*) FROM emails WHERE account_id = ?", 
-                (account_id,)
+            result = self.db.execute(
+                "SELECT COUNT(*) as count FROM emails WHERE account_id = ?", 
+                (account_id,), commit=False
             )
-            count = cursor.fetchone()[0]
+            if self.db.use_pool:
+                count = result[0]['count'] if result else 0
+            else:
+                count = result.fetchone()['count']
             return count == 0
         except Exception as e:
             logger.warning(f"Failed to check first sync status: {e}")

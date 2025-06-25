@@ -65,6 +65,10 @@ def fetch_all_providers_optimized(limit: int = 50, unread_only: bool = True, use
     Returns:
         Combined results from all accounts and important folders
     """
+    # 最少显示50封
+    if limit < 50:
+        limit = 50
+    
     # Check cache first
     if use_cache:
         cache_key = f"fetch_all_{unread_only}_{limit}"

@@ -35,17 +35,25 @@ class SystemHandlers:
                     
                     # IMAP status
                     imap_status = acc.get('imap', {})
-                    if imap_status.get('success'):
-                        text += f"  ✅ IMAP: Connected\n"
+                    # Handle case where imap_status might be a string
+                    if isinstance(imap_status, dict):
+                        if imap_status.get('success'):
+                            text += f"  ✅ IMAP: Connected\n"
+                        else:
+                            text += f"  ❌ IMAP: {imap_status.get('error', 'Failed')}\n"
                     else:
-                        text += f"  ❌ IMAP: {imap_status.get('error', 'Failed')}\n"
+                        text += f"  ❌ IMAP: {imap_status}\n"
                     
                     # SMTP status
                     smtp_status = acc.get('smtp', {})
-                    if smtp_status.get('success'):
-                        text += f"  ✅ SMTP: Connected\n"
+                    # Handle case where smtp_status might be a string
+                    if isinstance(smtp_status, dict):
+                        if smtp_status.get('success'):
+                            text += f"  ✅ SMTP: Connected\n"
+                        else:
+                            text += f"  ❌ SMTP: {smtp_status.get('error', 'Failed')}\n"
                     else:
-                        text += f"  ❌ SMTP: {smtp_status.get('error', 'Failed')}\n"
+                        text += f"  ❌ SMTP: {smtp_status}\n"
                     
                     text += "\n"
                 
@@ -56,21 +64,26 @@ class SystemHandlers:
                 
                 # IMAP status
                 imap_status = result.get('imap', {})
-                if imap_status.get('success'):
-                    text += f"✅ IMAP: Connected successfully\n"
-                    if imap_status.get('mailbox_status'):
-                        status = imap_status['mailbox_status']
-                        text += f"   Total emails: {status.get('total', 0)}\n"
-                        text += f"   Unread emails: {status.get('unread', 0)}\n"
+                if isinstance(imap_status, dict):
+                    if imap_status.get('success'):
+                        text += f"✅ IMAP: Connected successfully\n"
+                        if imap_status.get('total_emails') is not None:
+                            text += f"   Total emails: {imap_status.get('total_emails', 0)}\n"
+                            text += f"   Unread emails: {imap_status.get('unread_emails', 0)}\n"
+                    else:
+                        text += f"❌ IMAP: {imap_status.get('error', 'Connection failed')}\n"
                 else:
-                    text += f"❌ IMAP: {imap_status.get('error', 'Connection failed')}\n"
+                    text += f"❌ IMAP: {imap_status}\n"
                 
                 # SMTP status
                 smtp_status = result.get('smtp', {})
-                if smtp_status.get('success'):
-                    text += f"✅ SMTP: Connected successfully\n"
+                if isinstance(smtp_status, dict):
+                    if smtp_status.get('success'):
+                        text += f"✅ SMTP: Connected successfully\n"
+                    else:
+                        text += f"❌ SMTP: {smtp_status.get('error', 'Connection failed')}\n"
                 else:
-                    text += f"❌ SMTP: {smtp_status.get('error', 'Connection failed')}\n"
+                    text += f"❌ SMTP: {smtp_status}\n"
                 
                 response.append({"type": "text", "text": text})
             

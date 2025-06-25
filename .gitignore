@@ -81,6 +81,9 @@ accounts.json
 *.db-shm
 email_sync.db*
 
+# PID files
+*.pid
+
 # Sync configuration (contains sensitive paths)
 sync_config.json
 

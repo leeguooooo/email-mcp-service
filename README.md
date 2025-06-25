@@ -31,21 +31,28 @@ uv run python setup.py
 ### 3. 初始化数据库和同步
 
 ```bash
-# 交互式模式（推荐新手）
-uv run python init_sync.py
+# 交互式模式（推荐）
+uv run python sync_manager.py
 
 # 直接初始化数据库
-uv run python init_sync.py init
+uv run python sync_manager.py init
 
 # 启动后台守护进程（持续同步）
-uv run python init_sync.py daemon
+uv run python sync_manager.py start
+
+# 停止后台守护进程
+uv run python sync_manager.py stop
+
+# 查看同步状态
+uv run python sync_manager.py status
 ```
 
 **功能说明：**
 - 自动创建配置文件
 - 检查邮箱账户配置  
 - 初始化数据库并同步最近6个月的邮件
-- 支持后台守护进程模式持续同步
+- 单例模式确保只有一个后台进程运行
+- 支持PID文件管理和进程检查
 
 #### 邮箱配置说明
 
@@ -129,17 +136,18 @@ reply_email with email_id="123" body="回复内容"
 ### 数据库同步功能
 
 ```bash
-# 查看同步状态
-sync_emails with action="status"
+# MCP客户端中的同步命令
+sync_emails with action="status"                    # 查看同步状态
+sync_emails with action="force"                     # 手动触发同步
+sync_emails with action="start"                     # 启动后台自动同步
+sync_emails with action="stop"                      # 停止后台同步
 
-# 手动触发同步
-sync_emails with action="force"
-
-# 启动后台自动同步
-sync_emails with action="start"
-
-# 停止后台同步
-sync_emails with action="stop"
+# 命令行同步管理
+uv run python sync_manager.py status                # 查看状态
+uv run python sync_manager.py sync                  # 增量同步
+uv run python sync_manager.py sync full             # 完全同步
+uv run python sync_manager.py start                 # 启动守护进程
+uv run python sync_manager.py stop                  # 停止守护进程
 ```
 
 **同步机制说明：**

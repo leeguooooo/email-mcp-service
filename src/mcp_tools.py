@@ -12,7 +12,9 @@ from core.tool_handlers import ToolContext, EmailToolHandlers
 from core.communication_handlers import CommunicationHandlers
 from core.organization_handlers import OrganizationHandlers
 from core.system_handlers import SystemHandlers
+from core.hybrid_config import get_hybrid_config
 from account_manager import AccountManager
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -81,8 +83,25 @@ class MCPTools:
     
     def __init__(self, server):
         self.server = server
-        self.account_manager = AccountManager()
+        # Use parent directory's accounts.json when running from src/
+        config_path = Path(__file__).parent.parent / "accounts.json"
+        self.account_manager = AccountManager(str(config_path))
         self.context = ToolContext(self.account_manager, get_message)
+        self.hybrid_config = get_hybrid_config()
+        
+        # 选择邮件处理器
+        if self.hybrid_config.is_enabled:
+            logger.info("Hybrid mode enabled - using hybrid email handlers")
+            try:
+                from core.hybrid_tool_handlers import HybridEmailToolHandlers
+                self.email_handlers = HybridEmailToolHandlers
+            except ImportError:
+                logger.warning("Failed to import hybrid handlers, falling back to standard")
+                self.email_handlers = EmailToolHandlers
+        else:
+            logger.info("Hybrid mode disabled - using standard email handlers")
+            self.email_handlers = EmailToolHandlers
+        
         self._register_all_tools()
         self._setup_server_handlers()
     
@@ -94,31 +113,31 @@ class MCPTools:
             "list_emails",
             "List emails from inbox (supports multi-account). Returns newest emails first. For unread emails, automatically checks multiple folders.",
             LIST_EMAILS_SCHEMA
-        )(EmailToolHandlers.handle_list_emails)
+        )(self.email_handlers.handle_list_emails)
         
         tool_registry.register(
             "get_email_detail",
             "Get detailed content of a specific email including body and attachments",
             GET_EMAIL_DETAIL_SCHEMA
-        )(EmailToolHandlers.handle_get_email_detail)
+        )(self.email_handlers.handle_get_email_detail)
         
         tool_registry.register(
             "mark_emails",
             "Mark one or more emails as read or unread",
             MARK_EMAILS_SCHEMA
-        )(EmailToolHandlers.handle_mark_emails)
+        )(self.email_handlers.handle_mark_emails)
         
         tool_registry.register(
             "delete_emails",
             "Delete one or more emails (move to trash or permanently delete)",
             DELETE_EMAILS_SCHEMA
-        )(EmailToolHandlers.handle_delete_emails)
+        )(self.email_handlers.handle_delete_emails)
         
         tool_registry.register(
             "search_emails",
             "Search emails with various criteria across all accounts or specific account",
             SEARCH_EMAILS_SCHEMA
-        )(EmailToolHandlers.handle_search_emails)
+        )(self.email_handlers.handle_search_emails)
         
         # Communication tools
         tool_registry.register(
@@ -183,7 +202,7 @@ class MCPTools:
         
         tool_registry.register(
             "sync_emails",
-            "Unified email synchronization tool: start/stop scheduler, force sync, get status, search cache, manage config (action: start|stop|force|status|search|recent|config)",
+            "Unified email synchronization tool: start/stop scheduler, force sync, get status, manage config (action: start|stop|force|status|config)",
             SYNC_EMAILS_SCHEMA
         )(SyncHandlers.handle_sync_emails)
     
