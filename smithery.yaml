@@ -24,11 +24,12 @@ configSchema:
 commandFunction: |
   (config) => {
     return {
-      command: "python",
+      command: ".venv/bin/python",
       args: ["smithery_wrapper.py"],
       cwd: `${process.env.HOME}/.config/smithery/servers/mcp-email-service`,
       env: {
-        PYTHONUNBUFFERED: "1"
+        PYTHONUNBUFFERED: "1",
+        PYTHONPATH: "src"
       }
     };
   }
@@ -42,5 +43,5 @@ installCommand:
       cd "$HOME/.config/smithery/servers" &&
       git clone https://github.com/leeguooooo/email-mcp-service.git mcp-email-service &&
       cd mcp-email-service &&
-      python -m venv .venv &&
+      python3 -m venv .venv &&
       .venv/bin/pip install -r requirements.txt

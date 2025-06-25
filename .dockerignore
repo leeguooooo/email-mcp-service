@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Project specific
+accounts.json
+email_sync.db*
+*.log
+
+# Docs
+*.md
+docs/
+tests/
+
+# Cache
+.cache/
+.pytest_cache/
