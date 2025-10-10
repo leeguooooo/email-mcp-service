@@ -200,7 +200,7 @@ wheels = [
 
 [[package]]
 name = "mcp-email-service"
-version = "1.0.0"
+version = "1.0.5"
 source = { editable = "." }
 dependencies = [
     { name = "mcp" },
