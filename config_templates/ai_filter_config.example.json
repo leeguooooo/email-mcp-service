@@ -1,0 +1,88 @@
+{
+  "ai_provider": "openai",
+  "model": "gpt-3.5-turbo",
+  "api_key_env": "OPENAI_API_KEY",
+  "base_url": null,
+  "priority_threshold": 0.7,
+  "max_body_length": 500,
+  "filter_rules": {
+    "high_priority_senders": [
+      "boss@company.com",
+      "important@client.com",
+      "noreply@bank.com"
+    ],
+    "high_priority_keywords": [
+      "urgent",
+      "important", 
+      "asap",
+      "deadline",
+      "meeting",
+      "紧急",
+      "重要",
+      "会议",
+      "截止"
+    ],
+    "low_priority_keywords": [
+      "newsletter",
+      "promotion",
+      "unsubscribe",
+      "marketing",
+      "广告",
+      "推广",
+      "退订",
+      "营销"
+    ],
+    "spam_indicators": [
+      "lottery",
+      "winner",
+      "congratulations",
+      "free money",
+      "中奖",
+      "恭喜",
+      "免费",
+      "赚钱"
+    ]
+  },
+  "categories": {
+    "work": [
+      "meeting",
+      "project", 
+      "deadline",
+      "report",
+      "会议",
+      "项目",
+      "截止",
+      "报告"
+    ],
+    "personal": [
+      "family",
+      "friend",
+      "birthday",
+      "vacation",
+      "家人",
+      "朋友", 
+      "生日",
+      "假期"
+    ],
+    "finance": [
+      "invoice",
+      "payment",
+      "bank",
+      "bill",
+      "发票",
+      "付款",
+      "银行",
+      "账单"
+    ],
+    "urgent": [
+      "urgent",
+      "emergency",
+      "asap",
+      "critical",
+      "紧急",
+      "急",
+      "立即",
+      "关键"
+    ]
+  }
+}

@@ -60,12 +60,14 @@ class SystemService:
             accounts = self.account_manager.get_all_accounts()
             
             account_list = []
-            for acc in accounts:
+            for account_id, acc in accounts.items():
                 account_info = {
-                    'email': acc.email,
-                    'provider': acc.provider,
-                    'imap_host': acc.imap_host,
-                    'smtp_host': acc.smtp_host
+                    'id': account_id,
+                    'email': acc.get('email'),
+                    'provider': acc.get('provider'),
+                    'description': acc.get('description', ''),
+                    'imap_host': acc.get('imap_server'),
+                    'smtp_host': acc.get('smtp_server')
                 }
                 account_list.append(account_info)
             
@@ -78,4 +80,3 @@ class SystemService:
         except Exception as e:
             logger.error(f"List accounts failed: {e}", exc_info=True)
             return {'error': str(e), 'success': False}
-
