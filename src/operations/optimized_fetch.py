@@ -8,16 +8,16 @@ import threading
 from datetime import datetime
 import time
 
-from account_manager import AccountManager
-from connection_manager import ConnectionManager
-from legacy_operations import fetch_emails
+from ..account_manager import AccountManager
+from ..connection_manager import ConnectionManager
+from ..legacy_operations import fetch_emails
 try:
-    from core.connection_pool import get_connection_pool
-    from operations.batch_fetch import BatchEmailFetcher
+    from ..core.connection_pool import get_connection_pool
+    from .batch_fetch import BatchEmailFetcher
     USE_OPTIMIZED = True
 except ImportError:
     USE_OPTIMIZED = False
-from operations.fast_fetch import get_cached_result, set_cached_result
+from .fast_fetch import get_cached_result, set_cached_result
 
 logger = logging.getLogger(__name__)
 

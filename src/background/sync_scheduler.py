@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 import json
 from pathlib import Path
 
-from operations.email_sync import EmailSyncManager
+from ..operations.email_sync import EmailSyncManager
 
 logger = logging.getLogger(__name__)
 

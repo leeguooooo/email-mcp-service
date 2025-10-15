@@ -1,18 +1,11 @@
 """
 Tool handlers implementation - Business logic for each MCP tool
+Uses service layer to reduce coupling with implementation details
 """
 import logging
 from typing import Dict, Any, List, Optional
-from account_manager import AccountManager
-from connection_manager import ConnectionManager
-from legacy_operations import (
-    fetch_emails, get_email_detail, mark_email_read, 
-    delete_email, check_connection, move_email_to_trash
-)
-from operations.smtp_operations import SMTPOperations
-from operations.folder_operations import FolderOperations
-from operations.search_operations import SearchOperations
-from operations.email_operations import EmailOperations
+from ..account_manager import AccountManager
+from ..services.email_service import EmailService
 
 logger = logging.getLogger(__name__)
 
@@ -21,13 +14,17 @@ class ToolContext:
     def __init__(self, account_manager: AccountManager, messages_func):
         self.account_manager = account_manager
         self.get_message = messages_func
-    
-    def get_connection_manager(self, account_id: Optional[str] = None) -> ConnectionManager:
-        """Get connection manager for specified account"""
-        account = self.account_manager.get_account(account_id)
-        if not account:
-            raise ValueError("No email account configured")
-        return ConnectionManager(account)
+        # Initialize all services
+        from ..services import (
+            EmailService, 
+            CommunicationService, 
+            FolderService, 
+            SystemService
+        )
+        self.email_service = EmailService(account_manager)
+        self.communication_service = CommunicationService(account_manager)
+        self.folder_service = FolderService(account_manager)
+        self.system_service = SystemService(account_manager)
 
 class EmailToolHandlers:
     """Handlers for email-related tools"""
@@ -36,22 +33,12 @@ class EmailToolHandlers:
     def handle_list_emails(args: Dict[str, Any], ctx: ToolContext) -> List[Dict[str, Any]]:
         """Handle list_emails tool"""
         try:
-            # Check if we should use optimized fetch
-            unread_only = args.get('unread_only', False)
-            limit = args.get('limit', 50)
-            folder = args.get('folder', 'INBOX')
-            account_id = args.get('account_id')
-            
-            # If fetching all unread from all accounts/folders
-            if unread_only and not account_id and folder == 'INBOX':
-                try:
-                    from operations.optimized_fetch import fetch_all_providers_optimized
-                    result = fetch_all_providers_optimized(limit, unread_only)
-                except ImportError:
-                    logger.warning("Optimized fetch not available, using standard fetch")
-                    result = fetch_emails(limit, unread_only, folder, account_id)
-            else:
-                result = fetch_emails(limit, unread_only, folder, account_id)
+            result = ctx.email_service.list_emails(
+                limit=args.get('limit', 50),
+                unread_only=args.get('unread_only', False),
+                folder=args.get('folder', 'INBOX'),
+                account_id=args.get('account_id')
+            )
             
             if 'error' in result:
                 return [{
@@ -72,10 +59,10 @@ class EmailToolHandlers:
     def handle_get_email_detail(args: Dict[str, Any], ctx: ToolContext) -> List[Dict[str, Any]]:
         """Handle get_email_detail tool"""
         try:
-            result = get_email_detail(
-                args['email_id'],
-                args.get('folder', 'INBOX'),
-                args.get('account_id')
+            result = ctx.email_service.get_email_detail(
+                email_id=args['email_id'],
+                folder=args.get('folder', 'INBOX'),
+                account_id=args.get('account_id')
             )
             
             if 'error' in result:
@@ -97,49 +84,12 @@ class EmailToolHandlers:
     def handle_mark_emails(args: Dict[str, Any], ctx: ToolContext) -> List[Dict[str, Any]]:
         """Handle mark_emails tool"""
         try:
-            email_ids = args['email_ids']
-            mark_as = args['mark_as']
-            folder = args.get('folder', 'INBOX')
-            account_id = args.get('account_id')
-            
-            # Use parallel operations if available and multiple emails
-            if len(email_ids) > 1:
-                try:
-                    from operations.parallel_operations import parallel_ops, batch_ops
-                    result = parallel_ops.execute_batch_operation(
-                        batch_ops.batch_mark_emails,
-                        email_ids,
-                        folder,
-                        account_id,
-                        mark_as=mark_as
-                    )
-                except ImportError:
-                    # Fallback to sequential
-                    results = []
-                    for email_id in email_ids:
-                        if mark_as == 'read':
-                            res = mark_email_read(email_id, folder, account_id)
-                        else:
-                            conn_mgr = ctx.get_connection_manager(account_id)
-                            email_ops = EmailOperations(conn_mgr)
-                            res = email_ops.mark_email_unread(email_id, folder)
-                        results.append(res)
-                    
-                    success_count = sum(1 for r in results if 'error' not in r)
-                    result = {
-                        'success': success_count == len(results),
-                        'marked_count': success_count,
-                        'total': len(results)
-                    }
-            else:
-                # Single email
-                email_id = email_ids[0]
-                if mark_as == 'read':
-                    result = mark_email_read(email_id, folder, account_id)
-                else:
-                    conn_mgr = ctx.get_connection_manager(account_id)
-                    email_ops = EmailOperations(conn_mgr)
-                    result = email_ops.mark_email_unread(email_id, folder)
+            result = ctx.email_service.mark_emails(
+                email_ids=args['email_ids'],
+                mark_as=args['mark_as'],
+                folder=args.get('folder', 'INBOX'),
+                account_id=args.get('account_id')
+            )
             
             if result.get('success'):
                 return [{
@@ -163,54 +113,13 @@ class EmailToolHandlers:
     def handle_delete_emails(args: Dict[str, Any], ctx: ToolContext) -> List[Dict[str, Any]]:
         """Handle delete_emails tool"""
         try:
-            email_ids = args['email_ids']
-            folder = args.get('folder', 'INBOX')
-            permanent = args.get('permanent', False)
-            trash_folder = args.get('trash_folder', 'Trash')
-            account_id = args.get('account_id')
-            
-            # Use parallel operations if available and multiple emails
-            if len(email_ids) > 1:
-                try:
-                    from operations.parallel_operations import parallel_ops, batch_ops
-                    if permanent:
-                        result = parallel_ops.execute_batch_operation(
-                            batch_ops.batch_delete_emails,
-                            email_ids,
-                            folder,
-                            account_id
-                        )
-                    else:
-                        result = parallel_ops.execute_batch_operation(
-                            batch_ops.batch_move_emails,
-                            email_ids,
-                            folder,
-                            account_id,
-                            target_folder=trash_folder
-                        )
-                except ImportError:
-                    # Fallback to sequential
-                    results = []
-                    for email_id in email_ids:
-                        if permanent:
-                            res = delete_email(email_id, folder, account_id)
-                        else:
-                            res = move_email_to_trash(email_id, folder, trash_folder, account_id)
-                        results.append(res)
-                    
-                    success_count = sum(1 for r in results if r.get('success'))
-                    result = {
-                        'success': success_count == len(results),
-                        'deleted_count': success_count,
-                        'total': len(results)
-                    }
-            else:
-                # Single email
-                email_id = email_ids[0]
-                if permanent:
-                    result = delete_email(email_id, folder, account_id)
-                else:
-                    result = move_email_to_trash(email_id, folder, trash_folder, account_id)
+            result = ctx.email_service.delete_emails(
+                email_ids=args['email_ids'],
+                folder=args.get('folder', 'INBOX'),
+                permanent=args.get('permanent', False),
+                trash_folder=args.get('trash_folder', 'Trash'),
+                account_id=args.get('account_id')
+            )
             
             if result.get('success'):
                 return [{
@@ -234,33 +143,17 @@ class EmailToolHandlers:
     def handle_search_emails(args: Dict[str, Any], ctx: ToolContext) -> List[Dict[str, Any]]:
         """Handle search_emails tool"""
         try:
-            # Use optimized search if available
-            try:
-                from operations.optimized_search import search_all_accounts_parallel
-                result = search_all_accounts_parallel(
-                    query=args.get('query'),
-                    search_in=args.get('search_in', 'all'),
-                    date_from=args.get('date_from'),
-                    date_to=args.get('date_to'),
-                    folder=args.get('folder', 'all'),
-                    unread_only=args.get('unread_only', False),
-                    limit=args.get('limit', 50),
-                    account_id=args.get('account_id')
-                )
-            except ImportError:
-                # Fallback to standard search
-                conn_mgr = ctx.get_connection_manager(args.get('account_id'))
-                search_ops = SearchOperations(conn_mgr)
-                result = search_ops.search_emails(
-                    query=args.get('query'),
-                    search_in=args.get('search_in', 'all'),
-                    date_from=args.get('date_from'),
-                    date_to=args.get('date_to'),
-                    folder=args.get('folder', 'INBOX'),
-                    unread_only=args.get('unread_only', False),
-                    has_attachments=args.get('has_attachments'),
-                    limit=args.get('limit', 50)
-                )
+            result = ctx.email_service.search_emails(
+                query=args.get('query'),
+                search_in=args.get('search_in', 'all'),
+                date_from=args.get('date_from'),
+                date_to=args.get('date_to'),
+                folder=args.get('folder', 'all'),
+                unread_only=args.get('unread_only', False),
+                has_attachments=args.get('has_attachments'),
+                limit=args.get('limit', 50),
+                account_id=args.get('account_id')
+            )
             
             if not result.get('success', True):
                 return [{

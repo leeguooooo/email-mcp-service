@@ -12,8 +12,8 @@ import json
 from pathlib import Path
 import os
 
-from connection_manager import ConnectionManager
-from account_manager import AccountManager
+from .connection_manager import ConnectionManager
+from .account_manager import AccountManager
 
 logger = logging.getLogger(__name__)
 

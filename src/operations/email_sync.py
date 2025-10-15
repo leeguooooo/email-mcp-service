@@ -10,9 +10,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import time
 
-from account_manager import AccountManager
-from connection_manager import ConnectionManager
-from database.email_sync_db import EmailSyncDatabase
+from ..account_manager import AccountManager
+from ..connection_manager import ConnectionManager
+from ..database.email_sync_db import EmailSyncDatabase
 
 logger = logging.getLogger(__name__)
 

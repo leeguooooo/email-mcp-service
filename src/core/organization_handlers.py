@@ -1,12 +1,10 @@
 """
 Organization tool handlers - Folders, flags, attachments
+Uses service layer to reduce coupling with implementation details
 """
 import logging
-from typing import Dict, Any, List, Optional
-from legacy_operations import check_connection
-from operations.folder_operations import FolderOperations
-from operations.email_operations import EmailOperations
-from core.tool_handlers import ToolContext
+from typing import Dict, Any, List
+from .tool_handlers import ToolContext
 
 logger = logging.getLogger(__name__)
 
@@ -17,9 +15,7 @@ class OrganizationHandlers:
     def handle_list_folders(args: Dict[str, Any], ctx: ToolContext) -> List[Dict[str, Any]]:
         """Handle list_folders tool"""
         try:
-            conn_mgr = ctx.get_connection_manager(args.get('account_id'))
-            folder_ops = FolderOperations(conn_mgr)
-            result = folder_ops.list_folders()
+            result = ctx.folder_service.list_folders(args.get('account_id'))
             
             if result.get('success'):
                 folders = result.get('folders', [])
@@ -59,39 +55,12 @@ class OrganizationHandlers:
     def handle_move_emails_to_folder(args: Dict[str, Any], ctx: ToolContext) -> List[Dict[str, Any]]:
         """Handle move_emails_to_folder tool"""
         try:
-            email_ids = args['email_ids']
-            target_folder = args['target_folder']
-            source_folder = args.get('source_folder', 'INBOX')
-            account_id = args.get('account_id')
-            
-            # Use parallel operations if available and multiple emails
-            if len(email_ids) > 1:
-                try:
-                    from operations.parallel_operations import parallel_ops, batch_ops
-                    result = parallel_ops.execute_batch_operation(
-                        batch_ops.batch_move_emails,
-                        email_ids,
-                        source_folder,
-                        account_id,
-                        target_folder=target_folder
-                    )
-                except ImportError:
-                    # Fallback to standard folder operations
-                    conn_mgr = ctx.get_connection_manager(account_id)
-                    folder_ops = FolderOperations(conn_mgr)
-                    result = folder_ops.move_emails_to_folder(
-                        email_ids,
-                        target_folder,
-                        source_folder
-                    )
-            else:
-                conn_mgr = ctx.get_connection_manager(account_id)
-                folder_ops = FolderOperations(conn_mgr)
-                result = folder_ops.move_emails_to_folder(
-                    email_ids,
-                    target_folder,
-                    source_folder
-                )
+            result = ctx.folder_service.move_emails_to_folder(
+                email_ids=args['email_ids'],
+                target_folder=args['target_folder'],
+                source_folder=args.get('source_folder', 'INBOX'),
+                account_id=args.get('account_id')
+            )
             
             if result.get('success'):
                 return [{
@@ -115,13 +84,12 @@ class OrganizationHandlers:
     def handle_flag_email(args: Dict[str, Any], ctx: ToolContext) -> List[Dict[str, Any]]:
         """Handle flag_email tool"""
         try:
-            conn_mgr = ctx.get_connection_manager(args.get('account_id'))
-            email_ops = EmailOperations(conn_mgr)
-            result = email_ops.flag_email(
-                args['email_id'],
-                args.get('flag_type', 'flagged'),
-                args.get('folder', 'INBOX'),
-                args.get('set_flag', True)
+            result = ctx.folder_service.flag_email(
+                email_id=args['email_id'],
+                flag_type=args['flag_type'],
+                set_flag=args.get('set_flag', True),
+                folder=args.get('folder', 'INBOX'),
+                account_id=args.get('account_id')
             )
             
             if result.get('success'):
@@ -146,11 +114,10 @@ class OrganizationHandlers:
     def handle_get_email_attachments(args: Dict[str, Any], ctx: ToolContext) -> List[Dict[str, Any]]:
         """Handle get_email_attachments tool"""
         try:
-            conn_mgr = ctx.get_connection_manager(args.get('account_id'))
-            email_ops = EmailOperations(conn_mgr)
-            result = email_ops.get_email_attachments(
-                args['email_id'],
-                args.get('folder', 'INBOX')
+            result = ctx.folder_service.get_email_attachments(
+                email_id=args['email_id'],
+                folder=args.get('folder', 'INBOX'),
+                account_id=args.get('account_id')
             )
             
             if 'error' in result:

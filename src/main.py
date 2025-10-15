@@ -6,13 +6,22 @@ A Model Context Protocol server for email operations
 
 import asyncio
 import logging
+import sys
+from pathlib import Path
 from mcp.server.models import InitializationOptions
 from mcp.server import NotificationOptions, Server
 import mcp.server.stdio
 import mcp.types as types
 
 # Import the refactored tools
-from mcp_tools import MCPTools
+if __package__ is None or __package__ == "":
+    # When executed as a script, ensure repository root is on sys.path
+    repo_root = Path(__file__).resolve().parent.parent
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from src.mcp_tools import MCPTools
+else:
+    from .mcp_tools import MCPTools
 
 # Configure logging
 logging.basicConfig(

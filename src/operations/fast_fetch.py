@@ -7,8 +7,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 import threading
 
-from account_manager import AccountManager
-from legacy_operations import fetch_emails
+from ..account_manager import AccountManager
+from ..legacy_operations import fetch_emails
 
 logger = logging.getLogger(__name__)
 

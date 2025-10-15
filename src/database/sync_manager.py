@@ -8,11 +8,11 @@ from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 
-from account_manager import AccountManager
-from connection_manager import ConnectionManager
+from ..account_manager import AccountManager
+from ..connection_manager import ConnectionManager
 from .email_database import EmailDatabase
-from operations.folder_operations import FolderOperations
-from operations.email_operations import EmailOperations
+from ..operations.folder_operations import FolderOperations
+from ..operations.email_operations import EmailOperations
 
 logger = logging.getLogger(__name__)
 

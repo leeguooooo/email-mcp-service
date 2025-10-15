@@ -5,9 +5,9 @@ Shows how to use the local SQLite database for improved performance
 import logging
 from typing import Dict, Any, List, Optional
 
-from database import EmailDatabase, SyncManager
-from account_manager import AccountManager
-from mcp_tools import MCPTools
+from .database import EmailDatabase, SyncManager
+from .account_manager import AccountManager
+from .mcp_tools import MCPTools
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ class DatabaseIntegratedEmailService:
                 }
             else:
                 # Fall back to direct fetch
-                from legacy_operations import fetch_emails
+                from .legacy_operations import fetch_emails
                 return fetch_emails(limit, unread_only, folder, account_id)
     
     def search_emails_cached(self,
@@ -120,7 +120,7 @@ class DatabaseIntegratedEmailService:
         row = cursor.fetchone()
         if not row:
             # Not in cache, fall back to remote
-            from legacy_operations import get_email_detail
+            from .legacy_operations import get_email_detail
             return get_email_detail(email_id)
         
         db_email_id = row[0]
@@ -185,9 +185,9 @@ class DatabaseIntegratedEmailService:
                 self.db.update_email_flags(row[0], is_read=is_read)
         
         # Then update remote
-        from legacy_operations import mark_email_read
-        from operations.email_operations import EmailOperations
-        from connection_manager import ConnectionManager
+        from .legacy_operations import mark_email_read
+        from .operations.email_operations import EmailOperations
+        from .connection_manager import ConnectionManager
         
         account_id = parts[0] if parts else None
         account = self.account_manager.get_account(account_id)

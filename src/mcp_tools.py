@@ -2,79 +2,38 @@
 MCP tool definitions and handlers - Refactored clean version
 """
 import logging
-import os
 import asyncio
 from typing import Dict, Any, List, Optional
 
-from core.tool_registry import tool_registry
-from core.tool_schemas import *
-from core.tool_handlers import ToolContext, EmailToolHandlers
-from core.communication_handlers import CommunicationHandlers
-from core.organization_handlers import OrganizationHandlers
-from core.system_handlers import SystemHandlers
-from account_manager import AccountManager
+from .core.tool_registry import tool_registry
+from .core.tool_schemas import (
+    LIST_EMAILS_SCHEMA,
+    GET_EMAIL_DETAIL_SCHEMA,
+    MARK_EMAILS_SCHEMA,
+    MARK_EMAIL_READ_SCHEMA,
+    MARK_EMAIL_UNREAD_SCHEMA,
+    BATCH_MARK_READ_SCHEMA,
+    DELETE_EMAIL_SCHEMA,
+    DELETE_EMAILS_SCHEMA,
+    SEARCH_EMAILS_SCHEMA,
+    SEND_EMAIL_SCHEMA,
+    REPLY_EMAIL_SCHEMA,
+    FORWARD_EMAIL_SCHEMA,
+    LIST_FOLDERS_SCHEMA,
+    MOVE_EMAILS_TO_FOLDER_SCHEMA,
+    FLAG_EMAIL_SCHEMA,
+    GET_EMAIL_ATTACHMENTS_SCHEMA,
+    CHECK_CONNECTION_SCHEMA,
+    LIST_ACCOUNTS_SCHEMA
+)
+from .core.tool_handlers import ToolContext, EmailToolHandlers
+from .core.communication_handlers import CommunicationHandlers
+from .core.organization_handlers import OrganizationHandlers
+from .core.system_handlers import SystemHandlers
+from .account_manager import AccountManager
+from .config.messages import get_message
 
 logger = logging.getLogger(__name__)
-
-# Multi-language support
-MESSAGES = {
-    'zh': {
-        'no_email': '📭 没有找到邮件',
-        'email_sent': '✅ 邮件发送成功，已发送给 {} 个收件人',
-        'error': '❌ 错误：',
-        'operation_failed': '❌ 操作失败：',
-        'operation_success': '✅ 操作成功完成',
-        'found_emails': '📧 找到 {} 封邮件 (总计 {} 封，未读 {} 封)',
-        'from_accounts': '📊 来自 {} 个邮箱账户',
-        'unread_mark': '🔴 ',
-        'read_mark': '📧 ',
-        'from': '📤 ',
-        'date': '📅 ',
-        'id': '🆔 ',
-        'account': '📮 ',
-        'fetch_time': '⏱️ 获取耗时：{:.2f} 秒',
-        'failed_accounts': '⚠️ 部分账户获取失败：',
-        'account_stats': '📊 各账户统计：',
-        'emails_count': '{} 封 (总 {}, 未读 {})',
-        'found_folders': '📁 找到 {} 个文件夹',
-        'messages': '条消息'
-    },
-    'en': {
-        'no_email': '📭 No emails found',
-        'email_sent': '✅ Email sent successfully to {} recipient(s)',
-        'error': '❌ Error: ',
-        'operation_failed': '❌ Operation failed: ',
-        'operation_success': '✅ Operation completed successfully',
-        'found_emails': '📧 Found {} emails (total: {}, unread: {})',
-        'from_accounts': '📊 From {} email accounts',
-        'unread_mark': '🔴 ',
-        'read_mark': '📧 ',
-        'from': '📤 ',
-        'date': '📅 ',
-        'id': '🆔 ',
-        'account': '📮 ',
-        'fetch_time': '⏱️ Fetch time: {:.2f} seconds',
-        'failed_accounts': '⚠️ Failed to fetch from some accounts:',
-        'account_stats': '📊 Account statistics:',
-        'emails_count': '{} emails (total: {}, unread: {})',
-        'found_folders': '📁 Found {} folders',
-        'messages': 'messages'
-    }
-}
-
-def get_user_language():
-    """Get user's preferred language from environment or default to Chinese"""
-    lang = os.getenv('MCP_LANGUAGE', 'zh')
-    return lang
-
-def get_message(key: str, *args, **kwargs):
-    """Get localized message"""
-    lang = get_user_language()
-    messages = MESSAGES.get(lang, MESSAGES['zh'])
-    msg = messages.get(key, key)
-    if args or kwargs:
-        return msg.format(*args, **kwargs)
-    return msg
 
 class MCPTools:
     """Refactored MCP tools with clean architecture"""
@@ -88,6 +47,51 @@ class MCPTools:
     
     def _register_all_tools(self):
         """Register all tools with their handlers"""
+        
+        def make_single_mark_handler(mark_as: str):
+            """Create handler that marks a single email"""
+            def handler(args: Dict[str, Any], ctx: ToolContext):
+                payload = {
+                    "email_ids": [args["email_id"]],
+                    "mark_as": mark_as,
+                    "folder": args.get("folder", "INBOX")
+                }
+                account_id = args.get("account_id")
+                if account_id:
+                    payload["account_id"] = account_id
+                return EmailToolHandlers.handle_mark_emails(payload, ctx)
+            return handler
+        
+        def make_batch_mark_handler(mark_as: str):
+            """Create handler that marks multiple emails"""
+            def handler(args: Dict[str, Any], ctx: ToolContext):
+                payload = {
+                    "email_ids": args["email_ids"],
+                    "mark_as": mark_as,
+                    "folder": args.get("folder", "INBOX")
+                }
+                account_id = args.get("account_id")
+                if account_id:
+                    payload["account_id"] = account_id
+                return EmailToolHandlers.handle_mark_emails(payload, ctx)
+            return handler
+        
+        def delete_single_handler(args: Dict[str, Any], ctx: ToolContext):
+            """Delete a single email by delegating to batch handler"""
+            payload = {
+                "email_ids": [args["email_id"]],
+                "folder": args.get("folder", "INBOX"),
+                "permanent": args.get("permanent", False),
+                "trash_folder": args.get("trash_folder", "Trash")
+            }
+            account_id = args.get("account_id")
+            if account_id:
+                payload["account_id"] = account_id
+            return EmailToolHandlers.handle_delete_emails(payload, ctx)
+        
+        def batch_delete_handler(args: Dict[str, Any], ctx: ToolContext):
+            """Delete multiple emails"""
+            return EmailToolHandlers.handle_delete_emails(args, ctx)
         
         # Email tools
         tool_registry.register(
@@ -109,10 +113,40 @@ class MCPTools:
         )(EmailToolHandlers.handle_mark_emails)
         
         tool_registry.register(
+            "mark_email_read",
+            "Mark a single email as read",
+            MARK_EMAIL_READ_SCHEMA
+        )(make_single_mark_handler("read"))
+        
+        tool_registry.register(
+            "mark_email_unread",
+            "Mark a single email as unread",
+            MARK_EMAIL_UNREAD_SCHEMA
+        )(make_single_mark_handler("unread"))
+        
+        tool_registry.register(
+            "batch_mark_read",
+            "Mark multiple emails as read",
+            BATCH_MARK_READ_SCHEMA
+        )(make_batch_mark_handler("read"))
+        
+        tool_registry.register(
             "delete_emails",
             "Delete one or more emails (move to trash or permanently delete)",
             DELETE_EMAILS_SCHEMA
         )(EmailToolHandlers.handle_delete_emails)
+        
+        tool_registry.register(
+            "delete_email",
+            "Delete a single email (move to trash or permanently delete)",
+            DELETE_EMAIL_SCHEMA
+        )(delete_single_handler)
+        
+        tool_registry.register(
+            "batch_delete_emails",
+            "Delete multiple emails (move to trash or permanently delete)",
+            DELETE_EMAILS_SCHEMA
+        )(batch_delete_handler)
         
         tool_registry.register(
             "search_emails",
@@ -177,15 +211,53 @@ class MCPTools:
             LIST_ACCOUNTS_SCHEMA
         )(SystemHandlers.handle_list_accounts)
         
-        # Unified sync tool
-        from core.sync_handlers import SyncHandlers
-        from core.tool_schemas import SYNC_EMAILS_SCHEMA
+        # Unified sync tool (optional dependency)
+        try:
+            from .core.sync_handlers import SyncHandlers
+            from .core.tool_schemas import SYNC_EMAILS_SCHEMA
+            
+            tool_registry.register(
+                "sync_emails",
+                "Unified email synchronization tool: start/stop scheduler, force sync, get status, search cache, manage config (action: start|stop|force|status|search|recent|config)",
+                SYNC_EMAILS_SCHEMA
+            )(SyncHandlers.handle_sync_emails)
+        except (ModuleNotFoundError, ImportError) as exc:
+            logger.warning("Skipping sync tool registration: %s", exc)
+
+    def get_tool_definitions(self) -> List[Dict[str, Any]]:
+        """Return all registered tool definitions"""
+        return [tool.model_dump() for tool in tool_registry.list_tools()]
+    
+    def _format_success_result(self, tool_name: str, result: Dict[str, Any]) -> str:
+        """Format a human-friendly success message for common tools"""
+        if tool_name == "send_email":
+            recipients = result.get('recipients') or result.get('to') or []
+            if isinstance(recipients, int):
+                recipient_count = recipients
+            else:
+                recipient_count = len(recipients)
+            return get_message('email_sent', recipient_count)
         
-        tool_registry.register(
-            "sync_emails",
-            "Unified email synchronization tool: start/stop scheduler, force sync, get status, search cache, manage config (action: start|stop|force|status|search|recent|config)",
-            SYNC_EMAILS_SCHEMA
-        )(SyncHandlers.handle_sync_emails)
+        if tool_name == "search_emails":
+            displayed = result.get('displayed')
+            if displayed is None:
+                displayed = len(result.get('emails', []))
+            total = result.get('total_found', result.get('total', displayed))
+            return f"Found {displayed} emails (total: {total})"
+        
+        if tool_name == "list_folders":
+            folders = result.get('folders', [])
+            lines = [f"Found {len(folders)} folders"]
+            for folder in folders:
+                folder_name = folder.get('name', 'Unknown')
+                count = folder.get('message_count')
+                if count is not None:
+                    lines.append(f"{folder_name} ({count} messages)")
+                else:
+                    lines.append(folder_name)
+            return "\n".join(lines)
+        
+        return get_message('operation_success')
     
     def _setup_server_handlers(self):
         """Setup MCP server handlers"""

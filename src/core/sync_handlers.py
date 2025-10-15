@@ -5,10 +5,10 @@ import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-from core.tool_handlers import ToolContext
-from background.sync_scheduler import get_scheduler
-from background.sync_config import get_config_manager
-from operations.email_sync import EmailSyncManager
+from .tool_handlers import ToolContext
+from ..background.sync_scheduler import get_scheduler
+from ..background.sync_config import get_config_manager
+from ..operations.email_sync import EmailSyncManager
 
 logger = logging.getLogger(__name__)
 

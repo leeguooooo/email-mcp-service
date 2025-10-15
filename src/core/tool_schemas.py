@@ -13,8 +13,8 @@ LIST_EMAILS_SCHEMA = {
         },
         "unread_only": {
             "type": "boolean",
-            "description": "Only return unread emails (default: false)",
-            "default": False
+            "description": "Only return unread emails (default: true)",
+            "default": True
         },
         "folder": {
             "type": "string",
@@ -70,6 +70,97 @@ MARK_EMAILS_SCHEMA = {
         "account_id": {
             "type": "string",
             "description": "Specific account ID (required for safety)"
+        }
+    }
+}
+
+MARK_EMAIL_READ_SCHEMA = {
+    "type": "object",
+    "required": ["email_id"],
+    "properties": {
+        "email_id": {
+            "type": "string",
+            "description": "Email ID to mark as read"
+        },
+        "folder": {
+            "type": "string",
+            "description": "Email folder (default: 'INBOX')",
+            "default": "INBOX"
+        },
+        "account_id": {
+            "type": "string",
+            "description": "Specific account ID (optional)"
+        }
+    }
+}
+
+MARK_EMAIL_UNREAD_SCHEMA = {
+    "type": "object",
+    "required": ["email_id"],
+    "properties": {
+        "email_id": {
+            "type": "string",
+            "description": "Email ID to mark as unread"
+        },
+        "folder": {
+            "type": "string",
+            "description": "Email folder (default: 'INBOX')",
+            "default": "INBOX"
+        },
+        "account_id": {
+            "type": "string",
+            "description": "Specific account ID (optional)"
+        }
+    }
+}
+
+BATCH_MARK_READ_SCHEMA = {
+    "type": "object",
+    "required": ["email_ids"],
+    "properties": {
+        "email_ids": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "List of email IDs to mark as read"
+        },
+        "folder": {
+            "type": "string",
+            "description": "Email folder (default: 'INBOX')",
+            "default": "INBOX"
+        },
+        "account_id": {
+            "type": "string",
+            "description": "Specific account ID (required for safety)"
+        }
+    }
+}
+
+DELETE_EMAIL_SCHEMA = {
+    "type": "object",
+    "required": ["email_id"],
+    "properties": {
+        "email_id": {
+            "type": "string",
+            "description": "Email ID to delete"
+        },
+        "folder": {
+            "type": "string",
+            "description": "Source folder (default: 'INBOX')",
+            "default": "INBOX"
+        },
+        "permanent": {
+            "type": "boolean",
+            "description": "Permanently delete instead of moving to trash",
+            "default": False
+        },
+        "trash_folder": {
+            "type": "string",
+            "description": "Trash folder name (default: 'Trash')",
+            "default": "Trash"
+        },
+        "account_id": {
+            "type": "string",
+            "description": "Specific account ID (optional)"
         }
     }
 }
@@ -319,16 +410,21 @@ MOVE_EMAILS_TO_FOLDER_SCHEMA = {
 
 FLAG_EMAIL_SCHEMA = {
     "type": "object",
-    "required": ["email_id", "action"],
+    "required": ["email_id", "flag_type"],
     "properties": {
         "email_id": {
             "type": "string",
             "description": "Email ID to flag/unflag"
         },
-        "action": {
+        "flag_type": {
             "type": "string",
-            "enum": ["add", "remove"],
-            "description": "Add or remove flag"
+            "enum": ["flagged", "important", "answered"],
+            "description": "Flag category to apply"
+        },
+        "set_flag": {
+            "type": "boolean",
+            "description": "Set to true to add the flag or false to remove it",
+            "default": True
         },
         "folder": {
             "type": "string",

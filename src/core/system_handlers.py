@@ -1,10 +1,10 @@
 """
 System tool handlers - Account management, connection checks
+Uses service layer to reduce coupling with implementation details
 """
 import logging
-from typing import Dict, Any, List, Optional
-from legacy_operations import check_connection
-from core.tool_handlers import ToolContext
+from typing import Dict, Any, List
+from .tool_handlers import ToolContext
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ class SystemHandlers:
     def handle_check_connection(args: Dict[str, Any], ctx: ToolContext) -> List[Dict[str, Any]]:
         """Handle check_connection tool"""
         try:
-            result = check_connection()
+            result = ctx.system_service.check_connection()
             
             if 'error' in result:
                 return [{
@@ -87,7 +87,15 @@ class SystemHandlers:
     def handle_list_accounts(args: Dict[str, Any], ctx: ToolContext) -> List[Dict[str, Any]]:
         """Handle list_accounts tool"""
         try:
-            accounts = ctx.account_manager.list_accounts()
+            result = ctx.system_service.list_accounts()
+            
+            if not result.get('success'):
+                return [{
+                    "type": "text",
+                    "text": f"{ctx.get_message('error')}{result.get('error', 'Failed to list accounts')}"
+                }]
+            
+            accounts = result.get('accounts', [])
             
             if not accounts:
                 return [{"type": "text", "text": "No email accounts configured"}]
@@ -98,9 +106,10 @@ class SystemHandlers:
             for i, acc in enumerate(accounts, 1):
                 text += f"{i}. **{acc['email']}**\n"
                 text += f"   Provider: {acc['provider']}\n"
-                text += f"   ID: {acc['id']}\n"
-                if acc.get('is_default'):
-                    text += f"   ⭐ Default account\n"
+                if acc.get('imap_host'):
+                    text += f"   IMAP: {acc['imap_host']}\n"
+                if acc.get('smtp_host'):
+                    text += f"   SMTP: {acc['smtp_host']}\n"
                 text += "\n"
             
             return [{"type": "text", "text": text}]
