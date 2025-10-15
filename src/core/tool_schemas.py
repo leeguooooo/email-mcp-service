@@ -531,3 +531,36 @@ SYNC_EMAILS_SCHEMA = {
         }
     }
 }
+
+# Sync Health Monitoring schemas
+GET_SYNC_HEALTH_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "account_id": {
+            "type": "string",
+            "description": "Get health for specific account (optional)"
+        }
+    }
+}
+
+GET_CONNECTION_POOL_STATS_SCHEMA = {
+    "type": "object",
+    "properties": {}
+}
+
+GET_SYNC_HISTORY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "account_id": {
+            "type": "string",
+            "description": "Filter by account ID (optional)"
+        },
+        "hours": {
+            "type": "integer",
+            "description": "Number of hours to look back (default: 24)",
+            "default": 24,
+            "minimum": 1,
+            "maximum": 168
+        }
+    }
+}

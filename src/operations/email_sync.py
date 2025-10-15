@@ -13,6 +13,8 @@ import time
 from ..account_manager import AccountManager
 from ..connection_manager import ConnectionManager
 from ..database.email_sync_db import EmailSyncDatabase
+from ..connection_pool import get_connection_pool
+from ..background.sync_health_monitor import get_health_monitor
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,8 @@ class EmailSyncManager:
         self.sync_lock = threading.Lock()
         self.sync_status = {}
         self.config = config or self._load_config()
+        self.connection_pool = get_connection_pool()
+        self.health_monitor = get_health_monitor()
         
     def _load_config(self) -> Dict[str, Any]:
         """加载同步配置"""
@@ -112,21 +116,27 @@ class EmailSyncManager:
             account_id: 账户ID
             full_sync: 是否完全同步
         """
+        # 验证账户存在
         account = self.account_manager.get_account(account_id)
         if not account:
-            return {'success': False, 'error': f'Account {account_id} not found'}
+            error_msg = f'Account {account_id} not found'
+            logger.error(error_msg)
+            return {'success': False, 'error': error_msg}
         
         logger.info(f"Syncing account {account['email']} (full_sync={full_sync})")
+        
+        # 记录同步开始
+        sync_type = 'full' if full_sync else 'incremental'
+        self.health_monitor.record_sync_start(account_id, account['email'], sync_type)
+        
+        start_time = datetime.now()
         
         try:
             # 更新账户信息到数据库
             self.db.add_or_update_account(account_id, account['email'], account['provider'])
             
-            # 连接IMAP
-            conn_mgr = ConnectionManager(account)
-            mail = conn_mgr.connect_imap()
-            
-            try:
+            # 使用连接池获取连接
+            with self.connection_pool.get_connection(account_id, account) as mail:
                 # 获取所有文件夹
                 folders = self._get_account_folders(mail, account_id)
                 
@@ -147,6 +157,16 @@ class EmailSyncManager:
                 # 更新账户同步状态
                 self._update_account_sync_status(account_id, 'completed', total_added + total_updated)
                 
+                # 记录成功
+                duration = (datetime.now() - start_time).total_seconds()
+                self.health_monitor.record_sync_result(
+                    account_id=account_id,
+                    sync_type=sync_type,
+                    status='success',
+                    emails_synced=total_added + total_updated,
+                    duration_seconds=duration
+                )
+                
                 return {
                     'success': True,
                     'account_id': account_id,
@@ -155,16 +175,26 @@ class EmailSyncManager:
                     'emails_updated': total_updated
                 }
                 
-            finally:
-                conn_mgr.close_imap(mail)
-                
         except Exception as e:
-            logger.error(f"Account sync failed for {account_id}: {e}")
+            error_msg = str(e)
+            logger.error(f"Account sync failed for {account_id}: {error_msg}")
             self._update_account_sync_status(account_id, 'failed', 0)
+            
+            # 记录失败
+            duration = (datetime.now() - start_time).total_seconds()
+            self.health_monitor.record_sync_result(
+                account_id=account_id,
+                sync_type=sync_type,
+                status='failed',
+                emails_synced=0,
+                error_message=error_msg,
+                duration_seconds=duration
+            )
+            
             return {
                 'success': False,
                 'account_id': account_id,
-                'error': str(e)
+                'error': error_msg
             }
     
     def _get_account_folders(self, mail, account_id: str) -> List[str]:

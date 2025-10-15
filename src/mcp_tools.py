@@ -214,13 +214,32 @@ class MCPTools:
         # Unified sync tool (optional dependency)
         try:
             from .core.sync_handlers import SyncHandlers
-            from .core.tool_schemas import SYNC_EMAILS_SCHEMA
+            from .core.tool_schemas import SYNC_EMAILS_SCHEMA, GET_SYNC_HEALTH_SCHEMA, GET_CONNECTION_POOL_STATS_SCHEMA, GET_SYNC_HISTORY_SCHEMA
             
             tool_registry.register(
                 "sync_emails",
                 "Unified email synchronization tool: start/stop scheduler, force sync, get status, search cache, manage config (action: start|stop|force|status|search|recent|config)",
                 SYNC_EMAILS_SCHEMA
             )(SyncHandlers.handle_sync_emails)
+            
+            # Sync health monitoring tools
+            tool_registry.register(
+                "get_sync_health",
+                "Get sync health status for all accounts or a specific account, including health score, success rate, and failure history",
+                GET_SYNC_HEALTH_SCHEMA
+            )(SyncHandlers.handle_get_sync_health)
+            
+            tool_registry.register(
+                "get_sync_history",
+                "Get synchronization history for all accounts or a specific account within specified hours",
+                GET_SYNC_HISTORY_SCHEMA
+            )(SyncHandlers.handle_get_sync_history)
+            
+            tool_registry.register(
+                "get_connection_pool_stats",
+                "Get IMAP connection pool statistics including connection reuse rate and active connections",
+                GET_CONNECTION_POOL_STATS_SCHEMA
+            )(SyncHandlers.handle_get_connection_pool_stats)
         except (ModuleNotFoundError, ImportError) as exc:
             logger.warning("Skipping sync tool registration: %s", exc)
 

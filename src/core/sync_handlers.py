@@ -9,6 +9,8 @@ from .tool_handlers import ToolContext
 from ..background.sync_scheduler import get_scheduler
 from ..background.sync_config import get_config_manager
 from ..operations.email_sync import EmailSyncManager
+from ..background.sync_health_monitor import get_health_monitor
+from ..connection_pool import get_connection_pool
 
 logger = logging.getLogger(__name__)
 
@@ -388,4 +390,186 @@ class SyncHandlers:
             return [{
                 "type": "text",
                 "text": f"❌ 配置管理失败: {str(e)}"
+            }]
+    
+    @staticmethod
+    def handle_get_sync_health(args: Dict[str, Any], ctx: ToolContext) -> List[Dict[str, Any]]:
+        """获取同步健康状态"""
+        try:
+            monitor = get_health_monitor()
+            account_id = args.get('account_id')
+            
+            if account_id:
+                # 获取特定账户的健康状态
+                health = monitor.get_account_health(account_id)
+                
+                if not health:
+                    return [{
+                        "type": "text",
+                        "text": f"❌ 未找到账户 {account_id} 的健康信息"
+                    }]
+                
+                # 格式化单个账户的健康状态
+                health_icon = "🟢" if health['health_score'] >= 70 else "🟡" if health['health_score'] >= 50 else "🔴"
+                
+                response_text = f"📊 账户健康状态: {health['account_email']}\n\n"
+                response_text += f"{health_icon} 健康分数: {health['health_score']:.1f}/100\n"
+                response_text += f"• 最后同步: {health['last_sync_time'] or '从未同步'}\n"
+                response_text += f"• 同步状态: {health['last_sync_status']}\n"
+                response_text += f"• 连续失败: {health['consecutive_failures']} 次\n"
+                response_text += f"• 总同步次数: {health['total_syncs']} (成功: {health['successful_syncs']}, 失败: {health['failed_syncs']})\n"
+                response_text += f"• 已同步邮件: {health['total_emails_synced']:,}\n"
+                response_text += f"• 平均同步时长: {health['average_sync_duration']:.1f} 秒\n"
+                
+                if health['last_error']:
+                    response_text += f"\n❌ 最后错误: {health['last_error']}\n"
+                
+                if health['is_stale']:
+                    response_text += f"\n⚠️ 警告: 数据已过期（超过24小时未同步）\n"
+                
+                return [{"type": "text", "text": response_text}]
+            else:
+                # 获取所有账户的整体健康状况
+                overall = monitor.get_overall_health()
+                
+                if overall['status'] == 'no_accounts':
+                    return [{
+                        "type": "text",
+                        "text": "📊 同步健康状况\n\n❌ 没有配置账户"
+                    }]
+                
+                status_icon = "🟢" if overall['status'] == 'healthy' else "🟡"
+                
+                response_text = f"📊 同步健康总览\n\n"
+                response_text += f"{status_icon} 整体状态: {overall['status']}\n"
+                response_text += f"• 总账户数: {overall['total_accounts']}\n"
+                response_text += f"  - 健康: {overall['healthy_accounts']} 🟢\n"
+                response_text += f"  - 警告: {overall['warning_accounts']} 🟡\n"
+                response_text += f"  - 异常: {overall['critical_accounts']} 🔴\n"
+                response_text += f"• 平均健康分数: {overall['average_health_score']}/100\n"
+                response_text += f"• 总同步次数: {overall['total_syncs']}\n"
+                response_text += f"• 成功率: {overall['success_rate']}%\n"
+                
+                # 获取详细的账户健康状态
+                all_health = monitor.get_account_health()
+                if all_health:
+                    response_text += f"\n📧 账户详情:\n"
+                    for acc_id, health in list(all_health.items())[:10]:  # 最多显示10个
+                        health_icon = "🟢" if health['health_score'] >= 70 else "🟡" if health['health_score'] >= 50 else "🔴"
+                        response_text += f"{health_icon} {health['account_email']}: {health['health_score']:.0f}/100"
+                        
+                        if health['consecutive_failures'] > 0:
+                            response_text += f" (连续失败: {health['consecutive_failures']})"
+                        
+                        response_text += "\n"
+                    
+                    if len(all_health) > 10:
+                        response_text += f"... 还有 {len(all_health) - 10} 个账户\n"
+                
+                return [{"type": "text", "text": response_text}]
+                
+        except Exception as e:
+            logger.error(f"Get sync health failed: {e}")
+            return [{
+                "type": "text",
+                "text": f"❌ 获取同步健康状态失败: {str(e)}"
+            }]
+    
+    @staticmethod
+    def handle_get_sync_history(args: Dict[str, Any], ctx: ToolContext) -> List[Dict[str, Any]]:
+        """获取同步历史"""
+        try:
+            monitor = get_health_monitor()
+            account_id = args.get('account_id')
+            hours = args.get('hours', 24)
+            
+            history = monitor.get_sync_history(account_id, hours)
+            
+            if not history:
+                account_info = f"账户 {account_id}" if account_id else "所有账户"
+                return [{
+                    "type": "text",
+                    "text": f"📜 最近 {hours} 小时内{account_info}无同步记录"
+                }]
+            
+            # 格式化同步历史
+            account_info = f"账户 {account_id}" if account_id else "所有账户"
+            response_text = f"📜 同步历史 (最近 {hours} 小时, {account_info})\n\n"
+            
+            for event in history[:20]:  # 最多显示20条
+                timestamp = datetime.fromisoformat(event['timestamp']).strftime('%m-%d %H:%M')
+                
+                # 状态图标
+                if event['status'] == 'success':
+                    status_icon = "✅"
+                elif event['status'] == 'failed':
+                    status_icon = "❌"
+                else:
+                    status_icon = "⚠️"
+                
+                sync_type = "完全" if event['sync_type'] == 'full' else "增量"
+                
+                response_text += f"{status_icon} {timestamp} - {sync_type}同步"
+                
+                if event['status'] == 'success':
+                    response_text += f": {event['emails_synced']} 封邮件"
+                
+                if event['duration_seconds'] > 0:
+                    response_text += f" ({event['duration_seconds']:.1f}秒)"
+                
+                response_text += "\n"
+                
+                if event.get('error_message'):
+                    response_text += f"   错误: {event['error_message']}\n"
+            
+            if len(history) > 20:
+                response_text += f"\n... 还有 {len(history) - 20} 条记录\n"
+            
+            return [{"type": "text", "text": response_text}]
+            
+        except Exception as e:
+            logger.error(f"Get sync history failed: {e}")
+            return [{
+                "type": "text",
+                "text": f"❌ 获取同步历史失败: {str(e)}"
+            }]
+    
+    @staticmethod
+    def handle_get_connection_pool_stats(args: Dict[str, Any], ctx: ToolContext) -> List[Dict[str, Any]]:
+        """获取连接池统计信息"""
+        try:
+            pool = get_connection_pool()
+            stats = pool.get_stats()
+            
+            response_text = "🔌 IMAP 连接池统计\n\n"
+            response_text += f"• 总创建连接数: {stats['stats']['total_created']}\n"
+            response_text += f"• 复用次数: {stats['stats']['total_reused']}\n"
+            response_text += f"• 已关闭连接数: {stats['stats']['total_closed']}\n"
+            response_text += f"• 健康检查失败: {stats['stats']['health_check_failures']}\n"
+            response_text += f"\n• 活跃账户数: {stats['active_accounts']}\n"
+            response_text += f"• 总活跃连接数: {stats['total_active_connections']}\n"
+            
+            if stats['connections_per_account']:
+                response_text += f"\n📊 各账户连接数:\n"
+                for account_id, count in list(stats['connections_per_account'].items())[:10]:
+                    response_text += f"• {account_id}: {count} 个连接\n"
+            
+            response_text += f"\n⚙️ 配置:\n"
+            response_text += f"• 每账户最大连接数: {stats['config']['max_connections_per_account']}\n"
+            response_text += f"• 连接最大存活时间: {stats['config']['connection_max_age_minutes']} 分钟\n"
+            response_text += f"• 清理间隔: {stats['config']['cleanup_interval_seconds']} 秒\n"
+            
+            # 计算复用率
+            if stats['stats']['total_created'] > 0:
+                reuse_rate = (stats['stats']['total_reused'] / 
+                             (stats['stats']['total_created'] + stats['stats']['total_reused'])) * 100
+                response_text += f"\n📈 连接复用率: {reuse_rate:.1f}%\n"
+            
+            return [{"type": "text", "text": response_text}]
+            
+        except Exception as e:
+            logger.error(f"Get connection pool stats failed: {e}")
+            return [{
+                "type": "text",
+                "text": f"❌ 获取连接池统计失败: {str(e)}"
             }]
