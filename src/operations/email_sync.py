@@ -14,7 +14,6 @@ from ..account_manager import AccountManager
 from ..connection_manager import ConnectionManager
 from ..database.email_sync_db import EmailSyncDatabase
 from ..connection_pool import get_connection_pool
-from ..background.sync_health_monitor import get_health_monitor
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +28,16 @@ class EmailSyncManager:
         self.sync_status = {}
         self.config = config or self._load_config()
         self.connection_pool = get_connection_pool()
-        self.health_monitor = get_health_monitor()
+        # 延迟导入避免循环依赖
+        self._health_monitor = None
+    
+    @property
+    def health_monitor(self):
+        """延迟加载健康监控器"""
+        if self._health_monitor is None:
+            from ..background.sync_health_monitor import get_health_monitor
+            self._health_monitor = get_health_monitor()
+        return self._health_monitor
         
     def _load_config(self) -> Dict[str, Any]:
         """加载同步配置"""

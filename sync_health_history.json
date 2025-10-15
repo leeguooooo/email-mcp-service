@@ -1,0 +1,31 @@
+{
+  "account_health": {
+    "env_163": {
+      "account_id": "env_163",
+      "account_email": "leeguoo@163.com",
+      "last_sync_time": "2025-10-15T17:10:50.141633",
+      "last_sync_status": "success",
+      "consecutive_failures": 0,
+      "total_syncs": 1,
+      "successful_syncs": 1,
+      "failed_syncs": 0,
+      "total_emails_synced": 103,
+      "average_sync_duration": 43.64416,
+      "last_error": null,
+      "health_score": 100.0,
+      "is_stale": false
+    }
+  },
+  "sync_history": [
+    {
+      "timestamp": "2025-10-15T17:10:50.141582",
+      "account_id": "env_163",
+      "sync_type": "incremental",
+      "status": "success",
+      "emails_synced": 103,
+      "error_message": null,
+      "duration_seconds": 43.64416
+    }
+  ],
+  "failure_stats": {}
+}
