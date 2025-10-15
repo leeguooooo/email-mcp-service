@@ -126,20 +126,20 @@ class IMAPConnectionPool:
                 logger.info(f"Connection expired for {account_id}, creating new one")
                 pooled_conn.close()
                 with self._lock:
-                    self._connection_counts[account_id] -= 1
+                    # 关闭旧连接，但保持槽位（计数不变）
                     self.stats['total_closed'] += 1
-                # 创建新连接（过期连接不计入限制）
-                return self._create_new_connection(account_id, account_config)
+                # 创建新连接替换（槽位已保留，直接调用）
+                return self._create_new_connection_unlocked(account_id, account_config)
             
             if not pooled_conn.is_healthy():
                 logger.warning(f"Unhealthy connection for {account_id}, creating new one")
                 pooled_conn.close()
                 with self._lock:
-                    self._connection_counts[account_id] -= 1
+                    # 关闭旧连接，但保持槽位（计数不变）
                     self.stats['total_closed'] += 1
                     self.stats['health_check_failures'] += 1
-                # 创建新连接（不健康连接不计入限制）
-                return self._create_new_connection(account_id, account_config)
+                # 创建新连接替换（槽位已保留，直接调用）
+                return self._create_new_connection_unlocked(account_id, account_config)
             
             # 连接可用，标记为使用中
             pooled_conn.in_use = True
@@ -153,13 +153,19 @@ class IMAPConnectionPool:
             
         except Empty:
             # 池中没有空闲连接，检查是否可以创建新连接
+            can_create = False
             with self._lock:
                 current_count = self._connection_counts.get(account_id, 0)
                 
-                # 如果未达到限制，可以创建新连接
+                # 如果未达到限制，预分配槽位
                 if current_count < self.max_connections_per_account:
-                    # 在锁内创建，避免竞态条件
-                    return self._create_new_connection(account_id, account_config)
+                    # 在锁内预增计数，预留槽位
+                    self._connection_counts[account_id] = current_count + 1
+                    can_create = True
+            
+            # 如果可以创建，在锁外执行耗时的连接操作
+            if can_create:
+                return self._create_new_connection_unlocked(account_id, account_config)
             
             # 达到限制，需要等待连接释放
             logger.warning(
@@ -208,25 +214,41 @@ class IMAPConnectionPool:
                 logger.error(error_msg)
                 raise RuntimeError(error_msg)
     
-    def _create_new_connection(self, account_id: str, account_config: Dict[str, Any]) -> PooledConnection:
-        """创建新的IMAP连接"""
+    def _create_new_connection_unlocked(self, account_id: str, account_config: Dict[str, Any]) -> PooledConnection:
+        """
+        创建新的IMAP连接（不持有锁，避免死锁）
+        
+        前置条件：
+        - 新建连接：调用者已在锁内预增 connection_counts（预留槽位）
+        - 替换连接：调用者已关闭旧连接但保持 connection_counts 不变（复用槽位）
+        
+        错误处理：
+        - 如果连接创建失败，此方法会回滚计数（释放槽位）
+        
+        性能：
+        - 在锁外执行耗时的 connect_imap() 操作，避免阻塞其他线程
+        """
         try:
+            # 执行耗时的连接操作（不持有锁）
             conn_mgr = ConnectionManager(account_config)
             conn = conn_mgr.connect_imap()
             
             pooled_conn = PooledConnection(account_id, conn, conn_mgr)
             pooled_conn.in_use = True
             
+            # 更新统计（需要锁保护）
             with self._lock:
-                self._connection_counts[account_id] = \
-                    self._connection_counts.get(account_id, 0) + 1
                 self.stats['total_created'] += 1
+                current_count = self._connection_counts.get(account_id, 0)
             
-            logger.info(f"Created new connection for {account_id} "
-                       f"(total: {self._connection_counts[account_id]})")
+            logger.info(f"Created new connection for {account_id} (total: {current_count})")
             return pooled_conn
             
         except Exception as e:
+            # 连接失败，回滚计数
+            with self._lock:
+                self._connection_counts[account_id] = \
+                    self._connection_counts.get(account_id, 1) - 1
             logger.error(f"Failed to create connection for {account_id}: {e}")
             raise
     
