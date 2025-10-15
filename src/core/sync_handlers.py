@@ -546,6 +546,8 @@ class SyncHandlers:
             response_text += f"• 复用次数: {stats['stats']['total_reused']}\n"
             response_text += f"• 已关闭连接数: {stats['stats']['total_closed']}\n"
             response_text += f"• 健康检查失败: {stats['stats']['health_check_failures']}\n"
+            response_text += f"• 连接等待次数: {stats['stats']['connection_waits']}\n"
+            response_text += f"• 等待超时次数: {stats['stats']['wait_timeouts']}\n"
             response_text += f"\n• 活跃账户数: {stats['active_accounts']}\n"
             response_text += f"• 总活跃连接数: {stats['total_active_connections']}\n"
             
@@ -564,6 +566,14 @@ class SyncHandlers:
                 reuse_rate = (stats['stats']['total_reused'] / 
                              (stats['stats']['total_created'] + stats['stats']['total_reused'])) * 100
                 response_text += f"\n📈 连接复用率: {reuse_rate:.1f}%\n"
+            
+            # 告警信息
+            if stats['stats']['wait_timeouts'] > 0:
+                response_text += f"\n⚠️ 警告: 发生了 {stats['stats']['wait_timeouts']} 次等待超时！\n"
+                response_text += f"   建议: 增加 max_connections_per_account 或优化连接使用\n"
+            elif stats['stats']['connection_waits'] > 0:
+                response_text += f"\n💡 提示: 发生了 {stats['stats']['connection_waits']} 次连接等待\n"
+                response_text += f"   如果频繁等待，考虑增加连接池大小\n"
             
             return [{"type": "text", "text": response_text}]
             

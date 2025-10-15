@@ -84,7 +84,9 @@ class IMAPConnectionPool:
             'total_created': 0,
             'total_reused': 0,
             'total_closed': 0,
-            'health_check_failures': 0
+            'health_check_failures': 0,
+            'connection_waits': 0,
+            'wait_timeouts': 0
         }
         
         # 启动清理线程
@@ -126,7 +128,7 @@ class IMAPConnectionPool:
                 with self._lock:
                     self._connection_counts[account_id] -= 1
                     self.stats['total_closed'] += 1
-                # 创建新连接
+                # 创建新连接（过期连接不计入限制）
                 return self._create_new_connection(account_id, account_config)
             
             if not pooled_conn.is_healthy():
@@ -136,7 +138,7 @@ class IMAPConnectionPool:
                     self._connection_counts[account_id] -= 1
                     self.stats['total_closed'] += 1
                     self.stats['health_check_failures'] += 1
-                # 创建新连接
+                # 创建新连接（不健康连接不计入限制）
                 return self._create_new_connection(account_id, account_config)
             
             # 连接可用，标记为使用中
@@ -150,22 +152,61 @@ class IMAPConnectionPool:
             return pooled_conn
             
         except Empty:
-            # 池中没有空闲连接
+            # 池中没有空闲连接，检查是否可以创建新连接
             with self._lock:
                 current_count = self._connection_counts.get(account_id, 0)
                 
-                # 检查是否达到限制
-                if current_count >= self.max_connections_per_account:
-                    logger.warning(
-                        f"Max connections ({self.max_connections_per_account}) "
-                        f"reached for {account_id}, waiting..."
-                    )
-                    # 等待连接可用
-                    # 注意：在生产环境中可能需要添加超时
-                    pass
+                # 如果未达到限制，可以创建新连接
+                if current_count < self.max_connections_per_account:
+                    # 在锁内创建，避免竞态条件
+                    return self._create_new_connection(account_id, account_config)
             
-            # 创建新连接
-            return self._create_new_connection(account_id, account_config)
+            # 达到限制，需要等待连接释放
+            logger.warning(
+                f"Max connections ({self.max_connections_per_account}) "
+                f"reached for {account_id}, waiting for available connection..."
+            )
+            
+            with self._lock:
+                self.stats['connection_waits'] += 1
+            
+            # 阻塞等待连接释放（带超时）
+            wait_timeout = 60  # 最多等待60秒
+            try:
+                pooled_conn = self._pools[account_id].get(timeout=wait_timeout)
+                
+                # 再次检查连接健康状态
+                if pooled_conn.is_expired(self.connection_max_age_minutes) or not pooled_conn.is_healthy():
+                    logger.info(f"Waited connection is invalid for {account_id}, closing and retrying")
+                    pooled_conn.close()
+                    with self._lock:
+                        self._connection_counts[account_id] -= 1
+                        self.stats['total_closed'] += 1
+                    # 递归重试（此时应该有空位了）
+                    return self._acquire_connection(account_id, account_config)
+                
+                # 连接可用
+                pooled_conn.in_use = True
+                pooled_conn.last_used = datetime.now()
+                
+                with self._lock:
+                    self.stats['total_reused'] += 1
+                
+                logger.info(f"Acquired connection after waiting for {account_id}")
+                return pooled_conn
+                
+            except Empty:
+                # 等待超时，抛出异常
+                with self._lock:
+                    self.stats['wait_timeouts'] += 1
+                
+                error_msg = (
+                    f"Connection pool exhausted for {account_id}: "
+                    f"max {self.max_connections_per_account} connections in use, "
+                    f"waited {wait_timeout}s with no connection released"
+                )
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
     
     def _create_new_connection(self, account_id: str, account_config: Dict[str, Any]) -> PooledConnection:
         """创建新的IMAP连接"""
