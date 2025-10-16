@@ -12,4 +12,4 @@ configSchema:
   type: object
   properties: {}
 
-startCommand: python3 smithery_wrapper.py
+startCommand: python3 .smithery/smithery_wrapper.py

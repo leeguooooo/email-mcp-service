@@ -1,11 +1,8 @@
 FROM python:3.11-slim
 
-# Install system dependencies including build tools
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
     git \
-    gcc \
-    g++ \
-    libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -15,10 +12,7 @@ WORKDIR /app
 COPY requirements.txt .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt && \
-    # Remove build dependencies to reduce image size
-    apt-get purge -y --auto-remove gcc g++ libffi-dev && \
-    rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the entire project
 COPY . .
@@ -38,4 +32,4 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app/src:/app
 
 # The command will be provided by smithery.yaml
-CMD ["python", "smithery_wrapper.py"]
+CMD ["python", ".smithery/smithery_wrapper.py"]

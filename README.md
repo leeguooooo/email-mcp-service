@@ -1,6 +1,12 @@
 # MCP Email Service
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![uv](https://img.shields.io/badge/managed%20by-uv-purple)](https://github.com/astral-sh/uv)
+
 A unified MCP email service supporting multi-account management with **AI-powered intelligent monitoring and notifications**.
+
+> **🌟 New Feature**: Email translation & summarization with n8n automation - automatically translate non-Chinese emails, generate summaries, and send to Feishu/Lark!
 
 ## 🌟 New Feature: n8n + AI Email Monitoring
 
@@ -29,7 +35,7 @@ export OPENAI_API_KEY="your_api_key"  # Optional for AI filtering
 # The system will automatically check emails every 5 minutes
 ```
 
-📚 **Documentation**: See [N8N_EMAIL_MONITORING_GUIDE.md](N8N_EMAIL_MONITORING_GUIDE.md) for complete setup guide.
+📚 **Documentation**: See [N8N_EMAIL_MONITORING_GUIDE.md](docs/guides/N8N_EMAIL_MONITORING_GUIDE.md) for complete setup guide.
 
 ## Supported Email Providers
 
@@ -59,14 +65,19 @@ Requires Python 3.11+ and [UV](https://github.com/astral-sh/uv).
 
 ```bash
 git clone https://github.com/leeguooooo/email-mcp-service.git
-cd mcp-email-service
+cd email-mcp-service
 uv sync
 ```
 
 ### 2. Configure Email Accounts
 
 ```bash
+# Interactive setup
 uv run python setup.py
+
+# Or manually copy example config
+cp examples/accounts.example.json accounts.json
+# Then edit accounts.json with your email settings
 ```
 
 #### Email Configuration Guide
@@ -208,15 +219,22 @@ env | grep -E "(FEISHU|OPENAI|PYTHONPATH)"
 
 ## 📚 Documentation
 
-### Setup Guides
-- **[N8N_EMAIL_MONITORING_GUIDE.md](N8N_EMAIL_MONITORING_GUIDE.md)** - Complete setup and usage guide
-- **[LARK_SETUP_GUIDE.md](LARK_SETUP_GUIDE.md)** - Quick setup for Feishu/Lark webhook
-- **[PRODUCTION_DEPLOYMENT_GUIDE.md](PRODUCTION_DEPLOYMENT_GUIDE.md)** - Production deployment best practices
-- **[FINAL_SETUP_SUMMARY.md](FINAL_SETUP_SUMMARY.md)** - Final setup summary and checklist
+### Quick Start Guides
+- **[docs/guides/EMAIL_TRANSLATE_WORKFLOW_GUIDE.md](docs/guides/EMAIL_TRANSLATE_WORKFLOW_GUIDE.md)** - Email translation & summarization workflow
+- **[docs/guides/HTTP_API_QUICK_START.md](docs/guides/HTTP_API_QUICK_START.md)** - HTTP API quick start
+- **[docs/guides/N8N_EMAIL_MONITORING_GUIDE.md](docs/guides/N8N_EMAIL_MONITORING_GUIDE.md)** - n8n email monitoring guide
+- **[docs/guides/LARK_SETUP_GUIDE.md](docs/guides/LARK_SETUP_GUIDE.md)** - Feishu/Lark webhook setup
+
+### Deployment & Security
+- **[docs/guides/FINAL_DEPLOYMENT_CHECKLIST.md](docs/guides/FINAL_DEPLOYMENT_CHECKLIST.md)** - Deployment checklist
+- **[docs/guides/PRODUCTION_DEPLOYMENT_GUIDE.md](docs/guides/PRODUCTION_DEPLOYMENT_GUIDE.md)** - Production deployment guide
+- **[docs/guides/SECURITY_SETUP_GUIDE.md](docs/guides/SECURITY_SETUP_GUIDE.md)** - Security configuration
 
 ### Technical Documentation
-- **[n8n/README.md](n8n/README.md)** - Detailed n8n workflow configuration
-- **[config_templates/](config_templates/)** - Configuration file templates and examples
+- **[docs/README.md](docs/README.md)** - Complete documentation index
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System architecture
+- **[n8n/README.md](n8n/README.md)** - n8n workflow details
+- **[config_templates/](config_templates/)** - Configuration templates
 
 ## 🤝 Contributing
 
@@ -224,16 +242,63 @@ We welcome contributions! Please feel free to submit issues and pull requests.
 
 ### Development Setup
 ```bash
+# Clone the repository
 git clone https://github.com/leeguooooo/email-mcp-service.git
-cd mcp-email-service
-uv sync
-python scripts/setup_n8n_monitoring.py
+cd email-mcp-service
+
+# Install dependencies (including dev tools)
+uv sync --extra dev
+
+# Run tests
+uv run pytest
+
+# Set up development environment
+cp config_templates/env.n8n.example .env
+# Edit .env with your configuration
+```
+
+### Running Tests
+```bash
+# Run all tests
+uv run pytest
+
+# Run specific test file
+uv run pytest tests/test_mcp_tools.py
+
+# Run with coverage
+uv run pytest --cov=src --cov-report=html
+```
+
+### Code Quality
+
+**Option 1: Install dev dependencies** (recommended)
+```bash
+# Install with dev extras (includes black, ruff, mypy)
+uv sync --extra dev
+
+# Then run tools
+uv run black src/ scripts/ tests/
+uv run ruff check src/ scripts/ tests/
+uv run mypy src/
+```
+
+**Option 2: Use uv tool** (no installation needed)
+```bash
+# Format code
+uvx black src/ scripts/ tests/
+
+# Lint code
+uvx ruff check src/ scripts/ tests/
+
+# Type check
+uvx mypy src/
 ```
 
 ## ⭐ Features Roadmap
 
 - [x] Multi-account email management
 - [x] AI-powered email filtering
+- [x] Email translation & summarization (OpenAI)
 - [x] Multi-platform notifications
 - [x] n8n workflow automation
 - [x] Production-ready error handling
@@ -242,6 +307,20 @@ python scripts/setup_n8n_monitoring.py
 - [ ] Advanced analytics dashboard
 - [ ] Mobile app notifications
 
-## License
+## 🔒 Security
 
-MIT License
+### API Key Protection
+All sensitive endpoints are protected with API key authentication. See [SECURITY_SETUP_GUIDE.md](docs/guides/SECURITY_SETUP_GUIDE.md) for details.
+
+### Environment Variables
+Never commit sensitive information. Always use environment variables:
+- `.env` files are automatically ignored by git
+- Use `.env.example` templates for documentation
+- Rotate API keys regularly
+
+### Reporting Security Issues
+Please report security vulnerabilities to the repository maintainers privately before public disclosure.
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

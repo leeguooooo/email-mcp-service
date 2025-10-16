@@ -12,7 +12,9 @@ from pathlib import Path
 
 def check_accounts_configured():
     """Check if email accounts are configured"""
-    config_path = Path(__file__).parent / "accounts.json"
+    # Get repo root (parent of .smithery/)
+    repo_root = Path(__file__).resolve().parents[1]
+    config_path = repo_root / "accounts.json"
     if not config_path.exists():
         return False
     
@@ -32,8 +34,9 @@ def main():
         print("Then restart the MCP server.")
         sys.exit(1)
     
-    # Launch the main service
-    main_py = Path(__file__).parent / "src" / "main.py"
+    # Launch the main service from repo root
+    repo_root = Path(__file__).resolve().parents[1]
+    main_py = repo_root / "src" / "main.py"
     subprocess.run([sys.executable, str(main_py)])
 
 if __name__ == "__main__":
