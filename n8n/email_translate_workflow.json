@@ -1,5 +1,5 @@
 {
-  "name": "智能邮件监控与通知 (HTTP API)",
+  "name": "邮件翻译总结与通知",
   "nodes": [
     {
       "parameters": {
@@ -7,7 +7,7 @@
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "*/5 * * * *"
+              "expression": "*/10 * * * *"
             }
           ]
         }
@@ -16,14 +16,11 @@
       "name": "定时触发",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.1,
-      "position": [
-        240,
-        300
-      ]
+      "position": [240, 300]
     },
     {
       "parameters": {
-        "url": "={{ $env.EMAIL_API_URL }}/api/check-emails",
+        "url": "={{ $env.EMAIL_API_URL }}/api/translate-unread",
         "method": "POST",
         "sendHeaders": true,
         "headerParameters": {
@@ -39,7 +36,7 @@
           ]
         },
         "options": {
-          "timeout": 60000,
+          "timeout": 120000,
           "response": {
             "response": {
               "responseFormat": "json"
@@ -47,14 +44,11 @@
           }
         }
       },
-      "id": "call-email-api",
-      "name": "调用邮件检查API",
+      "id": "translate-emails",
+      "name": "翻译未读邮件",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [
-        460,
-        300
-      ]
+      "position": [460, 300]
     },
     {
       "parameters": {
@@ -75,8 +69,8 @@
               }
             },
             {
-              "id": "has-important-emails",
-              "leftValue": "={{ $json.stats.important_emails }}",
+              "id": "has-emails",
+              "leftValue": "={{ $json.count }}",
               "rightValue": 0,
               "operator": {
                 "type": "number",
@@ -88,14 +82,11 @@
         },
         "options": {}
       },
-      "id": "check-result",
-      "name": "检查结果",
+      "id": "check-has-emails",
+      "name": "检查是否有邮件",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [
-        680,
-        300
-      ]
+      "position": [680, 300]
     },
     {
       "parameters": {
@@ -103,54 +94,70 @@
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ $json.notification }}",
+        "jsonBody": "={{ $json.lark_message }}",
         "options": {
           "timeout": 10000
         }
       },
-      "id": "send-feishu-notification",
+      "id": "send-lark",
       "name": "发送飞书通知",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [
-        900,
-        240
-      ]
+      "position": [900, 240]
     },
     {
       "parameters": {
-        "content": "## ✅ 监控完成\n\n监控周期已完成，但没有发现重要邮件。",
+        "url": "={{ $env.EMAIL_API_URL }}/api/mark-read",
+        "method": "POST",
+        "sendHeaders": true,
+        "sendBody": true,
+        "specifyBody": "json",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.EMAIL_API_KEY }}"
+            }
+          ]
+        },
+        "jsonBody": "={{ $json.email_ids }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "mark-read",
+      "name": "标记已读",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 240]
+    },
+    {
+      "parameters": {
+        "content": "## ✅ 完成\n\n已发送通知并标记已读",
         "height": 80,
         "width": 150
       },
-      "id": "no-important-emails",
-      "name": "无重要邮件",
+      "id": "done",
+      "name": "完成",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [
-        900,
-        360
-      ]
+      "position": [1340, 240]
     },
     {
       "parameters": {
-        "url": "={{ $env.FEISHU_WEBHOOK }}",
-        "method": "POST",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"msg_type\": \"text\",\n  \"content\": {\n    \"text\": \"❌ 邮件监控失败\\n\\n错误: \" + $json.error\n  }\n}",
-        "options": {
-          "timeout": 10000
-        }
+        "content": "## 📭 无邮件\n\n没有未读邮件",
+        "height": 80,
+        "width": 150
       },
-      "id": "send-error-notification",
-      "name": "发送错误通知",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [
-        900,
-        480
-      ]
+      "id": "no-emails",
+      "name": "无未读邮件",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [900, 360]
     }
   ],
   "pinData": {},
@@ -159,25 +166,25 @@
       "main": [
         [
           {
-            "node": "调用邮件检查API",
+            "node": "翻译未读邮件",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "调用邮件检查API": {
+    "翻译未读邮件": {
       "main": [
         [
           {
-            "node": "检查结果",
+            "node": "检查是否有邮件",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "检查结果": {
+    "检查是否有邮件": {
       "main": [
         [
           {
@@ -188,7 +195,29 @@
         ],
         [
           {
-            "node": "无重要邮件",
+            "node": "无未读邮件",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "发送飞书通知": {
+      "main": [
+        [
+          {
+            "node": "标记已读",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "标记已读": {
+      "main": [
+        [
+          {
+            "node": "完成",
             "type": "main",
             "index": 0
           }
@@ -201,13 +230,13 @@
     "executionOrder": "v1"
   },
   "versionId": "1",
-  "id": "email-monitoring-http",
+  "id": "email-translate-workflow",
   "meta": {
     "instanceId": "default"
   },
   "tags": [
     {
-      "name": "邮件监控"
+      "name": "邮件翻译"
     }
   ]
 }
