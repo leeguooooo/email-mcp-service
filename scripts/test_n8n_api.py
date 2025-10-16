@@ -11,6 +11,16 @@ from pathlib import Path
 repo_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(repo_root))
 
+# 加载 .env 文件（如果存在）
+try:
+    from dotenv import load_dotenv
+    env_path = repo_root / '.env'
+    if env_path.exists():
+        load_dotenv(env_path)
+        print(f"📝 已加载 .env 文件\n")
+except ImportError:
+    pass  # python-dotenv 不是必需的
+
 
 def test_n8n_connection():
     """测试 n8n API 连接"""

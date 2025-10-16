@@ -4,14 +4,30 @@
 
 ## 🚀 3 步完成设置
 
-### 1. 设置 N8N_API_KEY
+### 方法 A: 使用 .env 文件 (推荐)
 
+#### 1. 创建 .env 文件
+```bash
+./scripts/create_env.sh
+```
+
+交互式设置会引导你输入：
+- N8N_API_KEY (必需)
+- OPENAI_API_KEY (可选)
+
+#### 2. 测试连接
+```bash
+uv run python scripts/test_n8n_api.py
+```
+
+### 方法 B: 使用环境变量
+
+#### 1. 设置 N8N_API_KEY
 ```bash
 export N8N_API_KEY="your_n8n_api_key_here"
 ```
 
-### 2. 测试连接
-
+#### 2. 测试连接
 ```bash
 uv run python scripts/test_n8n_api.py
 ```

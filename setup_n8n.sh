@@ -4,10 +4,18 @@
 echo "🚀 n8n 工作流自动设置"
 echo ""
 
-# 设置环境变量
-export N8N_URL="https://n8n.ifoodme.com"
-export FEISHU_WEBHOOK="https://open.larksuite.com/open-apis/bot/v2/hook/a56c9638-cb65-4f95-bb11-9eb19e09692a"
-export PYTHONPATH="/Users/leo/github.com/mcp-email-service:$PYTHONPATH"
+# 加载 .env 文件（如果存在）
+if [ -f .env ]; then
+    echo "📝 加载 .env 文件..."
+    export $(grep -v '^#' .env | xargs)
+    echo "   ✅ 环境变量已加载"
+    echo ""
+fi
+
+# 设置默认环境变量（如果未在 .env 中设置）
+export N8N_URL="${N8N_URL:-https://n8n.ifoodme.com}"
+export FEISHU_WEBHOOK="${FEISHU_WEBHOOK:-https://open.larksuite.com/open-apis/bot/v2/hook/a56c9638-cb65-4f95-bb11-9eb19e09692a}"
+export PYTHONPATH="${PYTHONPATH:-/Users/leo/github.com/mcp-email-service}"
 
 # 检查 N8N_API_KEY
 if [ -z "$N8N_API_KEY" ]; then

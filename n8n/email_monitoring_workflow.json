@@ -23,7 +23,7 @@
     },
     {
       "parameters": {
-        "command": "python",
+        "command": "python3",
         "arguments": "/Users/leo/github.com/mcp-email-service/scripts/email_monitor.py run",
         "options": {
           "cwd": "/Users/leo/github.com/mcp-email-service",

@@ -9,6 +9,8 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "schedule>=1.2.2",
     "requests>=2.31.0",
+    "fastapi>=0.119.0",
+    "uvicorn>=0.34.3",
 ]
 
 [project.optional-dependencies]

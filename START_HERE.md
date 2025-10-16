@@ -4,25 +4,33 @@
 
 ## ⚡ 超快速开始 (3 分钟)
 
-### 步骤 1: 设置 API Key
+### 🎯 推荐方式: 使用 .env 文件
 
+#### 步骤 1: 创建配置文件
 ```bash
-export N8N_API_KEY="your_n8n_api_key"
+./scripts/create_env.sh
 ```
+交互式引导，只需输入 N8N_API_KEY！
 
-> 💡 从 https://n8n.ifoodme.com/ 的 Settings → API 获取
-
-### 步骤 2: 测试连接
-
+#### 步骤 2: 测试连接
 ```bash
 uv run python scripts/test_n8n_api.py
 ```
 
-### 步骤 3: 自动导入
-
+#### 步骤 3: 自动导入
 ```bash
 ./setup_n8n.sh
 ```
+
+### 🔄 或使用环境变量
+
+```bash
+export N8N_API_KEY="your_n8n_api_key"
+uv run python scripts/test_n8n_api.py
+./setup_n8n.sh
+```
+
+> 💡 从 https://n8n.ifoodme.com/ 的 Settings → API 获取 API Key
 
 **就这么简单！** ✨
 

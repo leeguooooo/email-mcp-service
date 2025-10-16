@@ -13,6 +13,16 @@ from typing import Dict, Any, Optional
 repo_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(repo_root))
 
+# 加载 .env 文件（如果存在）
+try:
+    from dotenv import load_dotenv
+    env_path = repo_root / '.env'
+    if env_path.exists():
+        load_dotenv(env_path)
+        print(f"📝 已加载 .env 文件")
+except ImportError:
+    pass  # python-dotenv 不是必需的
+
 
 class N8NWorkflowManager:
     """n8n 工作流管理器"""
@@ -82,13 +92,12 @@ class N8NWorkflowManager:
     def create_workflow(self, workflow_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """创建新工作流"""
         try:
-            # 准备工作流数据
+            # 准备工作流数据（不包含 active 字段，创建后默认为未激活）
             payload = {
                 'name': workflow_data.get('name', '智能邮件监控与通知'),
                 'nodes': workflow_data.get('nodes', []),
                 'connections': workflow_data.get('connections', {}),
-                'settings': workflow_data.get('settings', {}),
-                'active': False  # 先不激活，让用户检查配置
+                'settings': workflow_data.get('settings', {})
             }
             
             print(f"📤 正在创建工作流: {payload['name']}")
@@ -168,18 +177,55 @@ class N8NWorkflowManager:
             print(f"❌ 工作流激活失败: {e}")
             return False
     
+    def delete_workflow(self, workflow_id: str) -> bool:
+        """删除工作流"""
+        try:
+            print(f"🗑️  正在删除工作流 ID: {workflow_id}")
+            response = requests.delete(
+                f'{self.api_url}/api/v1/workflows/{workflow_id}',
+                headers=self.headers,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                print(f"✅ 工作流已删除")
+                return True
+            else:
+                print(f"❌ 删除失败: HTTP {response.status_code}")
+                print(f"   响应: {response.text}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ 删除时发生错误: {e}")
+            return False
+    
     def update_workflow_environment(self, workflow_data: Dict[str, Any], 
                                    feishu_webhook: str,
                                    script_path: str) -> Dict[str, Any]:
         """更新工作流中的环境变量"""
+        # 使用 python3 命令（需要在 n8n 服务器上可用）
+        # 注意：这要求在 n8n 服务器上安装了 Python 3 和项目依赖
+        
         # 更新脚本路径
         for node in workflow_data.get('nodes', []):
             if node.get('name') == '邮件监控':
                 if 'parameters' in node:
+                    # 保持使用 python3 命令
+                    if 'command' not in node['parameters']:
+                        node['parameters']['command'] = 'python3'
+                    
+                    # 更新脚本参数
                     node['parameters']['arguments'] = f'{script_path}/scripts/email_monitor.py run'
+                    
+                    # 更新工作目录
                     if 'options' not in node['parameters']:
                         node['parameters']['options'] = {}
                     node['parameters']['options']['cwd'] = script_path
+                    
+                    # 确保设置 PYTHONPATH 环境变量
+                    if 'env' not in node['parameters']['options']:
+                        node['parameters']['options']['env'] = {}
+                    node['parameters']['options']['env']['PYTHONPATH'] = script_path
         
         return workflow_data
     
@@ -208,8 +254,14 @@ class N8NWorkflowManager:
             if existing:
                 print(f"\n⚠️  发现同名工作流: {workflow_name} (ID: {existing['id']})")
                 if update_if_exists:
-                    print("   将更新现有工作流...")
-                    return self.update_workflow(existing['id'], workflow_data)
+                    # 删除旧工作流，重新创建
+                    print("   将删除旧工作流并重新创建...")
+                    if self.delete_workflow(existing['id']):
+                        print("   正在创建新工作流...")
+                        return self.create_workflow(workflow_data)
+                    else:
+                        print("   ⚠️  删除失败，尝试更新...")
+                        return self.update_workflow(existing['id'], workflow_data)
                 else:
                     print("   跳过导入 (已存在)")
                     return existing
