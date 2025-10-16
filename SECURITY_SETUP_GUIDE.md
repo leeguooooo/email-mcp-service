@@ -43,13 +43,26 @@
 
 | 变量名 | 说明 | 示例值 |
 |--------|------|--------|
-| `EMAIL_API_URL` | 邮件 API 地址 | `https://your-domain.com/api/check-emails` |
+| `EMAIL_API_URL` | 邮件 API 基础地址 | `https://your-domain.com` (不含 /api/xxx) |
 | `FEISHU_WEBHOOK` | 飞书 Webhook | `https://open.larksuite.com/open-apis/bot/v2/hook/xxx` |
 
 **注意**: 
+- `EMAIL_API_URL` 只填写基础域名（如 `https://your-domain.com`）
+- 具体的 API 端点路径（如 `/api/translate-unread`）由 n8n 工作流自动拼接
 - 不要在截图中暴露完整的 URL
 - 不要在公开文档中写入真实值
 - 定期轮换敏感信息
+
+**URL 配置示例**：
+```
+✅ 正确: EMAIL_API_URL=https://your-domain.com
+❌ 错误: EMAIL_API_URL=https://your-domain.com/api/check-emails
+```
+
+工作流会自动拼接成：
+- `https://your-domain.com/api/translate-unread`
+- `https://your-domain.com/api/mark-read`
+- `https://your-domain.com/api/check-emails`
 
 ### 步骤 3: 在工作流中使用
 
@@ -124,7 +137,9 @@ location /api/ {
 
 ```bash
 # 邮件 API 配置
-EMAIL_API_URL=https://your-domain.com/api/check-emails
+# 注意：只填基础域名，不要包含 /api/xxx 路径
+# 具体端点由 n8n 工作流自动拼接
+EMAIL_API_URL=https://your-domain.com
 API_SECRET_KEY=your-random-secret-key-here
 
 # n8n 配置
@@ -204,7 +219,7 @@ openssl rand -hex 32
 
 # 2. 设置环境变量
 export API_SECRET_KEY="生成的密钥"
-export EMAIL_API_URL="https://your-domain.com/api/check-emails"
+export EMAIL_API_URL="https://your-domain.com"  # 只填域名
 
 # 3. 在 n8n 中设置环境变量
 # (通过 Web 界面)

@@ -194,17 +194,92 @@ $EMAIL_API_URL/api/translate-unread
 
 ---
 
+## 5. 🔧 SECURITY_SETUP_GUIDE URL 示例不一致
+
+**发现者**: Leo Review  
+**严重程度**: 高  
+**影响**: 按文档配置会导致 404 错误
+
+### 问题描述
+
+`SECURITY_SETUP_GUIDE.md` 中三处示例仍使用完整端点：
+```bash
+EMAIL_API_URL=https://your-domain.com/api/check-emails
+```
+
+这与实际配置要求不一致，工作流会拼接成：
+```
+https://your-domain.com/api/check-emails/api/translate-unread  # ❌ 404
+```
+
+### 修复方案
+
+统一所有文档中的 `EMAIL_API_URL` 示例：
+
+**修复位置 1 - 表格**：
+```markdown
+| `EMAIL_API_URL` | 邮件 API 基础地址 | `https://your-domain.com` (不含 /api/xxx) |
+```
+
+**修复位置 2 - .env 文件示例**：
+```bash
+# 注意：只填基础域名，不要包含 /api/xxx 路径
+# 具体端点由 n8n 工作流自动拼接
+EMAIL_API_URL=https://your-domain.com
+```
+
+**修复位置 3 - 快速部署示例**：
+```bash
+export EMAIL_API_URL="https://your-domain.com"  # 只填域名
+```
+
+**添加详细说明**：
+```markdown
+**URL 配置示例**：
+✅ 正确: EMAIL_API_URL=https://your-domain.com
+❌ 错误: EMAIL_API_URL=https://your-domain.com/api/check-emails
+
+工作流会自动拼接成：
+- https://your-domain.com/api/translate-unread
+- https://your-domain.com/api/mark-read
+- https://your-domain.com/api/check-emails
+```
+
+### 测试验证
+
+```bash
+# 验证所有文档中的 URL 配置一致性
+grep "EMAIL_API_URL.*https" \
+  SECURITY_SETUP_GUIDE.md \
+  config_templates/env.n8n.example \
+  HTTP_API_QUICK_START.md
+```
+
+### 影响范围
+
+- ✅ `SECURITY_SETUP_GUIDE.md` 已修复（3处）
+- ✅ `config_templates/env.n8n.example` 已正确
+- ✅ 所有工作流 JSON 已正确拼接路径
+- ✅ 部署脚本说明已更新
+
+---
+
 ## 🎯 教训
 
 1. **Import 检查**: 所有使用的模块和类型都要显式导入
 2. **依赖管理**: 使用的第三方库必须在 `pyproject.toml` 中声明
 3. **URL 设计**: 环境变量应该是"基础路径"，不应包含具体端点
-4. **文档准确性**: 示例和说明必须与实际使用一致
+4. **文档一致性**: 所有示例文档必须与实际配置保持一致
+5. **Review 重要性**: 详细的 code review 能发现细节问题
 
 ---
 
 ## ✨ Review 建议采纳
 
-所有 Leo review 发现的问题都已修复，现在代码可以正常运行了！
+所有 Leo review 发现的问题都已修复：
+- ✅ 缺失的 import 已添加
+- ✅ 依赖包已加入 pyproject.toml
+- ✅ URL 配置逻辑统一
+- ✅ 所有文档示例一致
 
-感谢仔细的 code review 🙏
+现在代码可以正常运行了！感谢仔细的 code review 🙏
