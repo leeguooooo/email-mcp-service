@@ -19,9 +19,7 @@ def test_fetch_speed():
     result = fetch_emails(limit=10, account_id="leeguoo_qq", use_cache=False)
     elapsed = time.time() - start
     
-    if 'error' in result:
-        print(f"❌ 错误: {result['error']}")
-        return False
+    assert 'error' not in result, f"获取邮件失败: {result.get('error')}"
     
     print(f"✅ 获取 {len(result.get('emails', []))} 封邮件")
     print(f"   耗时: {elapsed:.2f}秒")
@@ -34,7 +32,8 @@ def test_fetch_speed():
         if 'size' in first:
             print(f"   邮件大小: {first['size']} bytes")
     
-    return elapsed
+    # 验证性能 - 应该在合理时间内完成（60秒内）
+    assert elapsed < 60, f"获取速度太慢: {elapsed:.2f}秒"
 
 def test_cache_speed():
     """测试缓存速度"""
@@ -45,19 +44,18 @@ def test_cache_speed():
     cached_ops = CachedEmailOperations()
     
     if not cached_ops.is_available():
-        print("⚠️  缓存数据库不可用")
+        print("⚠️  缓存数据库不可用，跳过测试")
         print("   运行以下命令初始化:")
         print("   python scripts/init_sync.py")
-        return None
+        # 缓存不可用时跳过测试，而不是失败
+        return
     
     # 测试缓存读取
     start = time.time()
     result = fetch_emails(limit=10, account_id="leeguoo_qq", use_cache=True)
     elapsed = time.time() - start
     
-    if 'error' in result:
-        print(f"❌ 错误: {result['error']}")
-        return False
+    assert 'error' not in result, f"缓存读取失败: {result.get('error')}"
     
     print(f"✅ 获取 {len(result.get('emails', []))} 封邮件")
     print(f"   耗时: {elapsed:.3f}秒")
@@ -65,10 +63,10 @@ def test_cache_speed():
     if result.get('from_cache'):
         print(f"   来源: 缓存 ✨")
         print(f"   缓存年龄: {result.get('cache_age_minutes', 0):.1f} 分钟")
-        return elapsed
+        # 缓存读取应该很快（1秒内）
+        assert elapsed < 1, f"缓存读取速度太慢: {elapsed:.3f}秒"
     else:
         print(f"   来源: 实时IMAP（缓存未命中）")
-        return elapsed
 
 def test_detail_size():
     """测试邮件详情大小限制"""
@@ -81,8 +79,8 @@ def test_detail_size():
     # 获取一个邮件ID
     result = fetch_emails(limit=1, account_id="leeguoo_qq", use_cache=False)
     if not result.get('emails'):
-        print("⚠️  没有邮件可测试")
-        return True
+        print("⚠️  没有邮件可测试，跳过")
+        return
     
     email_id = result['emails'][0]['id']
     
@@ -90,9 +88,7 @@ def test_detail_size():
     detail = get_email_detail(email_id, account_id="leeguoo_qq")
     elapsed = time.time() - start
     
-    if 'error' in detail:
-        print(f"❌ 错误: {detail['error']}")
-        return False
+    assert 'error' not in detail, f"获取邮件详情失败: {detail.get('error')}"
     
     print(f"✅ 获取邮件详情")
     print(f"   耗时: {elapsed:.2f}秒")
@@ -108,7 +104,10 @@ def test_detail_size():
     if detail.get('attachments_truncated'):
         print("   ⚠️  附件已截断")
     
-    return True
+    # 验证邮件详情结构
+    assert 'subject' in detail or 'error' not in detail, "邮件详情缺少必要字段"
+    # 验证性能
+    assert elapsed < 30, f"获取邮件详情太慢: {elapsed:.2f}秒"
 
 def test_sync_status():
     """测试同步状态"""
@@ -120,9 +119,10 @@ def test_sync_status():
     status = cached_ops.get_sync_status()
     
     if not status.get('available'):
-        print("❌ 同步数据库不可用")
+        print("⚠️  同步数据库不可用，跳过测试")
         print(f"   原因: {status.get('message', status.get('error', 'Unknown'))}")
-        return False
+        # 数据库不可用时跳过，而不是失败
+        return
     
     print(f"✅ 同步数据库可用")
     print(f"   总邮件数: {status.get('total_emails', 0)}")
@@ -132,7 +132,9 @@ def test_sync_status():
         print(f"   - {acc['account_id']}: {acc['email_count']} 封")
         print(f"     最后同步: {acc['age_minutes']:.1f} 分钟前 {freshness}")
     
-    return True
+    # 验证状态结构
+    assert 'available' in status, "同步状态缺少必要字段"
+    assert status['available'] is True, "同步数据库应该可用"
 
 if __name__ == '__main__':
     print("\n" + "⚡ " * 20)

@@ -19,46 +19,33 @@ def test_email_lookup_fallback():
     # 测试 1: 使用真实 ID（应该工作）
     print("\n1️⃣  使用真实 ID: leeguoo_qq")
     account = account_mgr.get_account("leeguoo_qq")
-    if account and account.get('id') == 'leeguoo_qq':
-        print(f"   ✅ 成功: {account.get('email')}")
-    else:
-        print(f"   ❌ 失败")
-        return False
+    assert account and account.get('id') == 'leeguoo_qq', \
+        "使用真实 ID 查找失败"
+    print(f"   ✅ 成功: {account.get('email')}")
     
     # 测试 2: 使用邮箱地址（应该回退查找）
     print("\n2️⃣  使用邮箱地址: leeguoo@qq.com")
     account = account_mgr.get_account("leeguoo@qq.com")
-    if account and account.get('id') == 'leeguoo_qq':
-        print(f"   ✅ 成功: 解析到 ID = {account.get('id')}")
-    else:
-        print(f"   ❌ 失败: 未能解析到正确的 ID")
-        return False
+    assert account and account.get('id') == 'leeguoo_qq', \
+        "使用邮箱地址查找失败"
+    print(f"   ✅ 成功: 解析到 ID = {account.get('id')}")
     
     # 测试 3: 在实际操作中使用邮箱地址
     print("\n3️⃣  使用邮箱地址调用 get_email_detail")
-    try:
-        # 先获取一个邮件 ID
-        result = fetch_emails(limit=1, account_id="leeguoo_qq")
-        if result.get('emails'):
-            email_id = result['emails'][0]['id']
-            
-            # 使用邮箱地址作为 account_id
-            detail = get_email_detail(email_id, account_id="leeguoo@qq.com")
-            
-            if 'error' not in detail:
-                print(f"   ✅ 成功获取邮件")
-                print(f"   主题: {detail.get('subject', 'N/A')[:50]}")
-                print(f"   返回的 account_id: {detail.get('account_id')}")
-                return True
-            else:
-                print(f"   ❌ 失败: {detail.get('error')}")
-                return False
-        else:
-            print("   ⚠️  没有邮件可测试")
-            return True
-    except Exception as e:
-        print(f"   ❌ 异常: {e}")
-        return False
+    # 先获取一个邮件 ID
+    result = fetch_emails(limit=1, account_id="leeguoo_qq")
+    if result.get('emails'):
+        email_id = result['emails'][0]['id']
+        
+        # 使用邮箱地址作为 account_id
+        detail = get_email_detail(email_id, account_id="leeguoo@qq.com")
+        
+        assert 'error' not in detail, f"使用邮箱地址获取邮件详情失败: {detail.get('error')}"
+        print(f"   ✅ 成功获取邮件")
+        print(f"   主题: {detail.get('subject', 'N/A')[:50]}")
+        print(f"   返回的 account_id: {detail.get('account_id')}")
+    else:
+        print("   ⚠️  没有邮件可测试（跳过）")
 
 def test_env_account_id():
     """测试环境变量账户的 ID"""
@@ -74,15 +61,11 @@ def test_env_account_id():
         print("\n发现环境变量账户")
         account = account_mgr.get_account()  # 获取默认账户
         
-        if account and account.get('id'):
-            print(f"   ✅ 环境变量账户有 ID: {account.get('id')}")
-            return True
-        else:
-            print(f"   ❌ 环境变量账户没有 ID")
-            return False
+        assert account and account.get('id'), \
+            "环境变量账户应该有 ID"
+        print(f"   ✅ 环境变量账户有 ID: {account.get('id')}")
     else:
         print("\n   ⚠️  没有配置环境变量账户，跳过")
-        return True
 
 if __name__ == '__main__':
     print("\n" + "🧪 " * 20)
