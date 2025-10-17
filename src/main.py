@@ -25,12 +25,36 @@ else:
     from .mcp_tools import MCPTools
     from .background.sync_scheduler import SyncScheduler
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Configure logging for MCP server
+# MCP uses stdio for protocol communication, so we must avoid stderr output
+# to prevent protocol corruption. Log to file instead.
+from pathlib import Path
+import os
+
+# Create logs directory in data/
+log_dir = Path(__file__).parent.parent / "data" / "logs"
+log_dir.mkdir(parents=True, exist_ok=True)
+log_file = log_dir / "mcp_server.log"
+
+# Only configure if not already configured (avoid duplicate handlers)
+if not logging.getLogger().handlers:
+    # Configure root logger to write to file only
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file, encoding='utf-8'),
+            # Only add console handler if explicitly requested via env var
+            *(
+                [logging.StreamHandler(sys.stderr)]
+                if os.getenv('MCP_EMAIL_DEBUG') == '1'
+                else []
+            )
+        ]
+    )
+
 logger = logging.getLogger(__name__)
+logger.info(f"MCP Email Service starting, logs: {log_file}")
 
 # Global sync scheduler instance
 _sync_scheduler = None
