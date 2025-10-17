@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- 📊 **Contact Analysis** (Issue #6): New tools for analyzing email communication patterns
+  - `analyze_contacts` - Analyze top senders/recipients with frequency statistics
+  - `get_contact_timeline` - View communication timeline with specific contacts
+  - Database-driven analysis using `email_sync.db` cache
+  - Support for customizable time ranges (1-365 days) and result limits
+  - `tests/test_contact_analysis.py` - 12 comprehensive tests
 - 💾 **Data Directory**: Created `data/` directory for centralized runtime data management
 - 📍 **Path Configuration**: New `src/config/paths.py` for centralized path management
 - 🧪 **Test Suite Expansion**: Added 44 new tests (total 72, 71/72 passing)

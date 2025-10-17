@@ -8,7 +8,7 @@
 
 支持多邮箱账户统一管理的 MCP 邮件服务，具备 **AI 智能监控和通知功能**。
 
-> **🌟 新功能**：邮件翻译与总结 - 自动翻译非中文邮件，生成摘要，并发送到飞书！
+> **新功能**：邮件翻译与总结 - 自动翻译非中文邮件，生成摘要，并发送到飞书！
 
 ## 支持的邮箱
 
@@ -109,6 +109,14 @@ send_email with to=["user@example.com"] subject="标题" body="内容"
 reply_email with email_id="123" body="回复内容"
 ```
 
+### 联系人分析 ⭐ 新功能
+```bash
+analyze_contacts                                     # 分析联系人频率（最近30天）
+analyze_contacts with days=90 limit=20               # 自定义分析周期
+analyze_contacts with group_by="sender"              # 只分析发件人
+get_contact_timeline with contact_email="user@example.com"  # 获取沟通时间线
+```
+
 ## 所有可用命令
 
 ### 邮件操作
@@ -128,6 +136,10 @@ reply_email with email_id="123" body="回复内容"
 - `move_emails_to_folder` - 移动邮件
 - `list_folders` - 查看文件夹
 - `get_email_attachments` - 获取附件
+
+### 联系人分析 ⭐ 新功能
+- `analyze_contacts` - 分析联系人频率
+- `get_contact_timeline` - 获取沟通时间线
 
 ### 系统管理
 - `check_connection` - 测试连接
@@ -162,7 +174,7 @@ sync_emails with action="stop"
 2. **找不到邮件**：默认只显示未读，使用 `unread_only=false`
 3. **连接超时**：检查网络和防火墙设置
 
-## 📂 项目结构
+## 项目结构
 
 ```
 mcp-email-service/
@@ -190,15 +202,15 @@ mcp-email-service/
 
 ### 核心特性
 
-- 🚀 **后台同步自动启动**：MCP 服务启动时自动开始同步
-- 💾 **数据集中管理**：所有运行时数据在 `data/` 目录
-- 🔄 **基于 UID 的操作**：跨操作的稳定邮件标识
-- 🎯 **智能缓存**：比实时 IMAP 查询快 100-500 倍
-- 🔐 **多账户支持**：正确隔离管理多个邮箱账户
-- ⚡ **性能优化**：批量操作共享连接（快 5 倍）
-- 🧪 **充分测试**：71/72 测试通过，约 65% 代码覆盖率
+- **后台同步自动启动**：MCP 服务启动时自动开始同步
+- **数据集中管理**：所有运行时数据在 `data/` 目录
+- **基于 UID 的操作**：跨操作的稳定邮件标识
+- **智能缓存**：比实时 IMAP 查询快 100-500 倍
+- **多账户支持**：正确隔离管理多个邮箱账户
+- **性能优化**：批量操作共享连接（快 5 倍）
+- **充分测试**：71/72 测试通过，约 65% 代码覆盖率
 
-## 📚 文档
+## 文档
 
 ### 快速入门指南
 - **[docs/guides/EMAIL_TRANSLATE_WORKFLOW_GUIDE.md](docs/guides/EMAIL_TRANSLATE_WORKFLOW_GUIDE.md)** - 邮件翻译与摘要工作流
@@ -214,27 +226,28 @@ mcp-email-service/
 - **[config_templates/](config_templates/)** - 配置模板示例
 - **[data/README.md](data/README.md)** - 数据目录指南
 
-## 💖 支持本项目
+## 支持本项目
 
 如果你觉得本项目有帮助，请考虑：
 
-- ⭐ **给项目加星**以示支持
-- 🐛 **报告 Bug** 或建议功能通过 [Issues](https://github.com/leeguooooo/email-mcp-service/issues)
-- 🤝 **贡献代码**或文档通过 [Pull Requests](https://github.com/leeguooooo/email-mcp-service/pulls)
-- 💰 **赞助开发**通过 [GitHub Sponsors](https://github.com/sponsors/leeguooooo)
+- **给项目加星**以示支持
+- **报告 Bug** 或建议功能通过 [Issues](https://github.com/leeguooooo/email-mcp-service/issues)
+- **贡献代码**或文档通过 [Pull Requests](https://github.com/leeguooooo/email-mcp-service/pulls)
+- **赞助开发**通过 [GitHub Sponsors](https://github.com/sponsors/leeguooooo)
 
 ### 微信/支付宝赞赏
 
 如果你想支持本项目，可以使用微信支付或支付宝：
 
 <div align="center">
-  <img src=".github/wechatpay.JPG" alt="微信支付二维码" width="200"/>
-  <p><i>扫码支持本项目</i></p>
+  <img src=".github/wechatpay.JPG" alt="微信支付二维码" width="300"/>
+  <img src=".github/alipay.JPG" alt="支付宝二维码" width="300"/>
+  <p><i>扫码支持本项目（微信或支付宝）</i></p>
 </div>
 
-你的支持帮助维护和改进本项目！谢谢！🙏
+你的支持帮助维护和改进本项目！谢谢！
 
-## 🤝 贡献
+## 贡献
 
 欢迎贡献！请随时提交 Issue 和 Pull Request。
 

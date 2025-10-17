@@ -8,17 +8,17 @@
 
 A unified MCP email service supporting multi-account management with **AI-powered intelligent monitoring and notifications**.
 
-> **🌟 New Feature**: Email translation & summarization with n8n automation - automatically translate non-Chinese emails, generate summaries, and send to Feishu/Lark!
+> **New Feature**: Email translation & summarization with n8n automation - automatically translate non-Chinese emails, generate summaries, and send to Feishu/Lark!
 
-## 🌟 New Feature: n8n + AI Email Monitoring
+## New Feature: n8n + AI Email Monitoring
 
 **Automatically monitor emails, filter important ones with AI, and send real-time notifications to your team chat!**
 
-- 🤖 **AI Smart Filtering**: Uses OpenAI/Claude to intelligently identify important emails
-- 📱 **Multi-platform Notifications**: Supports Feishu/DingTalk/WeChat Work/Slack
-- ⏰ **Automated Monitoring**: n8n workflow runs every 5 minutes automatically  
-- 🔄 **Deduplication**: Prevents duplicate notifications
-- 🛡️ **Production Ready**: Comprehensive error handling and fallback mechanisms
+- **AI Smart Filtering**: Uses OpenAI/Claude to intelligently identify important emails
+- **Multi-platform Notifications**: Supports Feishu/DingTalk/WeChat Work/Slack
+- **Automated Monitoring**: n8n workflow runs every 5 minutes automatically  
+- **Deduplication**: Prevents duplicate notifications
+- **Production Ready**: Comprehensive error handling and fallback mechanisms
 
 ### Quick Start with AI Monitoring
 
@@ -37,7 +37,7 @@ export OPENAI_API_KEY="your_api_key"  # Optional for AI filtering
 # The system will automatically check emails every 5 minutes
 ```
 
-📚 **Documentation**: See [N8N_EMAIL_MONITORING_GUIDE.md](docs/guides/N8N_EMAIL_MONITORING_GUIDE.md) for complete setup guide.
+**Documentation**: See [N8N_EMAIL_MONITORING_GUIDE.md](docs/guides/N8N_EMAIL_MONITORING_GUIDE.md) for complete setup guide.
 
 ## Supported Email Providers
 
@@ -136,6 +136,14 @@ send_email with to=["user@example.com"] subject="Subject" body="Content"
 reply_email with email_id="123" body="Reply content"
 ```
 
+### Contact Analysis ⭐ NEW
+```bash
+analyze_contacts                                     # Analyze top contacts (last 30 days)
+analyze_contacts with days=90 limit=20               # Customize analysis period
+analyze_contacts with group_by="sender"              # Analyze only senders
+get_contact_timeline with contact_email="user@example.com"  # Get communication timeline
+```
+
 ## Available Commands
 
 ### Basic Email Operations
@@ -152,6 +160,8 @@ reply_email with email_id="123" body="Reply content"
 - `list_folders` - View folders
 - `get_email_attachments` - Get attachments
 - `check_connection` - Test connections
+- `analyze_contacts` ⭐ - Analyze contact frequency
+- `get_contact_timeline` ⭐ - Get communication timeline
 
 ### AI Monitoring System
 
@@ -219,7 +229,7 @@ tail -f email_monitor.log
 env | grep -E "(FEISHU|OPENAI|PYTHONPATH)"
 ```
 
-## 📂 Project Structure
+## Project Structure
 
 ```
 mcp-email-service/
@@ -247,15 +257,15 @@ mcp-email-service/
 
 ### Key Features
 
-- 🚀 **Auto-start Background Sync**: Synchronization starts automatically with MCP server
-- 💾 **Centralized Data Management**: All runtime data in `data/` directory
-- 🔄 **UID-based Operations**: Stable email identification across operations
-- 🎯 **Smart Caching**: 100-500x faster than live IMAP queries
-- 🔐 **Multi-account Support**: Manage multiple email accounts with proper isolation
-- ⚡ **Performance Optimized**: Shared connections for batch operations (5x faster)
-- 🧪 **Well Tested**: 71/72 tests passing, ~65% code coverage
+- **Auto-start Background Sync**: Synchronization starts automatically with MCP server
+- **Centralized Data Management**: All runtime data in `data/` directory
+- **UID-based Operations**: Stable email identification across operations
+- **Smart Caching**: 100-500x faster than live IMAP queries
+- **Multi-account Support**: Manage multiple email accounts with proper isolation
+- **Performance Optimized**: Shared connections for batch operations (5x faster)
+- **Well Tested**: 71/72 tests passing, ~65% code coverage
 
-## 📚 Documentation
+## Documentation
 
 ### Quick Start Guides
 - **[docs/guides/EMAIL_TRANSLATE_WORKFLOW_GUIDE.md](docs/guides/EMAIL_TRANSLATE_WORKFLOW_GUIDE.md)** - Email translation & summarization workflow
@@ -276,27 +286,28 @@ mcp-email-service/
 - **[config_templates/](config_templates/)** - Configuration templates and examples
 - **[data/README.md](data/README.md)** - Data directory usage guide
 
-## 💖 Support This Project
+## Support This Project
 
 If you find this project helpful, please consider:
 
-- ⭐ **Star this repository** to show your support
-- 🐛 **Report bugs** or suggest features via [Issues](https://github.com/leeguooooo/email-mcp-service/issues)
-- 🤝 **Contribute** code or documentation via [Pull Requests](https://github.com/leeguooooo/email-mcp-service/pulls)
-- 💰 **Sponsor** the development via [GitHub Sponsors](https://github.com/sponsors/leeguooooo)
+- **Star this repository** to show your support
+- **Report bugs** or suggest features via [Issues](https://github.com/leeguooooo/email-mcp-service/issues)
+- **Contribute** code or documentation via [Pull Requests](https://github.com/leeguooooo/email-mcp-service/pulls)
+- **Sponsor** the development via [GitHub Sponsors](https://github.com/sponsors/leeguooooo)
 
 ### Support via WeChat Pay / Alipay
 
 If you'd like to support this project, you can use WeChat Pay or Alipay:
 
 <div align="center">
-  <img src=".github/wechatpay.JPG" alt="WeChat Pay QR Code" width="200"/>
-  <p><i>Scan to support via WeChat Pay</i></p>
+  <img src=".github/wechatpay.JPG" alt="WeChat Pay QR Code" width="300"/>
+  <img src=".github/alipay.JPG" alt="Alipay QR Code" width="300"/>
+  <p><i>Scan to support via WeChat Pay or Alipay</i></p>
 </div>
 
-Your support helps maintain and improve this project! Thank you! 🙏
+Your support helps maintain and improve this project! Thank you!
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Please feel free to submit issues and pull requests.
 
@@ -354,7 +365,7 @@ uvx ruff check src/ scripts/ tests/
 uvx mypy src/
 ```
 
-## ⭐ Features Roadmap
+## Features Roadmap
 
 - [x] Multi-account email management
 - [x] AI-powered email filtering
@@ -367,7 +378,7 @@ uvx mypy src/
 - [ ] Advanced analytics dashboard
 - [ ] Mobile app notifications
 
-## 🔒 Security
+## Security
 
 ### API Key Protection
 All sensitive endpoints are protected with API key authentication. See [SECURITY_SETUP_GUIDE.md](docs/guides/SECURITY_SETUP_GUIDE.md) for details.
@@ -381,6 +392,6 @@ Never commit sensitive information. Always use environment variables:
 ### Reporting Security Issues
 Please report security vulnerabilities to the repository maintainers privately before public disclosure.
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

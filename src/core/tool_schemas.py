@@ -564,3 +564,56 @@ GET_SYNC_HISTORY_SCHEMA = {
         }
     }
 }
+
+# Contact Analysis schemas
+ANALYZE_CONTACTS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "account_id": {
+            "type": "string",
+            "description": "Account ID to analyze (optional, default: all accounts)"
+        },
+        "days": {
+            "type": "integer",
+            "description": "Number of days to analyze (default: 30)",
+            "default": 30,
+            "minimum": 1,
+            "maximum": 365
+        },
+        "limit": {
+            "type": "integer",
+            "description": "Top N contacts to return (default: 10)",
+            "default": 10,
+            "minimum": 1,
+            "maximum": 100
+        },
+        "group_by": {
+            "type": "string",
+            "description": "Group by sender/recipient/both (default: both)",
+            "enum": ["sender", "recipient", "both"],
+            "default": "both"
+        }
+    }
+}
+
+GET_CONTACT_TIMELINE_SCHEMA = {
+    "type": "object",
+    "required": ["contact_email"],
+    "properties": {
+        "contact_email": {
+            "type": "string",
+            "description": "Email address of the contact to analyze"
+        },
+        "account_id": {
+            "type": "string",
+            "description": "Account ID (optional, default: all accounts)"
+        },
+        "days": {
+            "type": "integer",
+            "description": "Number of days to look back (default: 90)",
+            "default": 90,
+            "minimum": 1,
+            "maximum": 365
+        }
+    }
+}

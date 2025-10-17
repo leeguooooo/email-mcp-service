@@ -24,7 +24,9 @@ from .core.tool_schemas import (
     FLAG_EMAIL_SCHEMA,
     GET_EMAIL_ATTACHMENTS_SCHEMA,
     CHECK_CONNECTION_SCHEMA,
-    LIST_ACCOUNTS_SCHEMA
+    LIST_ACCOUNTS_SCHEMA,
+    ANALYZE_CONTACTS_SCHEMA,
+    GET_CONTACT_TIMELINE_SCHEMA
 )
 from .core.tool_handlers import ToolContext, EmailToolHandlers
 from .core.communication_handlers import CommunicationHandlers
@@ -197,6 +199,19 @@ class MCPTools:
             "Extract attachments from an email",
             GET_EMAIL_ATTACHMENTS_SCHEMA
         )(OrganizationHandlers.handle_get_email_attachments)
+        
+        # Contact Analysis tools
+        tool_registry.register(
+            "analyze_contacts",
+            "Analyze contact frequency and communication patterns. Returns top senders/recipients based on email history.",
+            ANALYZE_CONTACTS_SCHEMA
+        )(OrganizationHandlers.handle_analyze_contacts)
+        
+        tool_registry.register(
+            "get_contact_timeline",
+            "Get communication timeline with a specific contact, showing all sent and received emails.",
+            GET_CONTACT_TIMELINE_SCHEMA
+        )(OrganizationHandlers.handle_get_contact_timeline)
         
         # System tools
         tool_registry.register(
