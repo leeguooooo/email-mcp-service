@@ -11,6 +11,8 @@ from src.operations.cached_operations import CachedEmailOperations
 
 def test_fetch_speed():
     """测试 fetch_emails 速度"""
+    import pytest
+    
     print("=" * 60)
     print("测试 1: fetch_emails 速度（实时 IMAP）")
     print("=" * 60)
@@ -18,6 +20,10 @@ def test_fetch_speed():
     start = time.time()
     result = fetch_emails(limit=10, account_id="leeguoo_qq", use_cache=False)
     elapsed = time.time() - start
+    
+    # 如果没有配置邮箱账户，跳过测试
+    if 'error' in result and 'No email account configured' in result.get('error', ''):
+        pytest.skip("No email account configured in CI environment")
     
     assert 'error' not in result, f"获取邮件失败: {result.get('error')}"
     

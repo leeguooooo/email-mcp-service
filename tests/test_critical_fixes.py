@@ -23,7 +23,7 @@ class TestMoveToTrashFallbackFlags(unittest.TestCase):
     """测试 move_email_to_trash 回退路径的 FLAGS 格式"""
     
     def test_fallback_uses_rfc_compliant_flags(self):
-        """
+        r"""
         关键测试：回退路径使用 RFC 合规的 FLAGS 格式
         
         问题：当 COPY 失败时，回退路径使用了 '\\Deleted' 而非 r'(\Deleted)'

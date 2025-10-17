@@ -15,11 +15,17 @@ import json
 
 def test_list_emails():
     """测试 list_emails 返回正确的 account_id"""
+    import pytest
+    
     print("=" * 60)
     print("测试 1: list_emails 返回 account_id")
     print("=" * 60)
     
     result = fetch_emails(limit=2, account_id="leeguoo_qq")
+    
+    # 如果没有配置邮箱账户，跳过测试
+    if 'error' in result and 'No email account configured' in result.get('error', ''):
+        pytest.skip("No email account configured in CI environment")
     
     assert 'error' not in result, f"获取邮件失败: {result.get('error')}"
     
