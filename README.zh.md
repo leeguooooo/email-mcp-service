@@ -1,6 +1,14 @@
 # MCP Email Service
 
-支持多邮箱账户统一管理的 MCP 邮件服务。
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![uv](https://img.shields.io/badge/managed%20by-uv-purple)](https://github.com/astral-sh/uv)
+[![Tests](https://img.shields.io/badge/tests-71%2F72%20passing-brightgreen)](./tests)
+[![GitHub Sponsors](https://img.shields.io/github/sponsors/leeguooooo?logo=github)](https://github.com/sponsors/leeguooooo)
+
+支持多邮箱账户统一管理的 MCP 邮件服务，具备 **AI 智能监控和通知功能**。
+
+> **🌟 新功能**：邮件翻译与总结 - 自动翻译非中文邮件，生成摘要，并发送到飞书！
 
 ## 支持的邮箱
 
@@ -153,6 +161,92 @@ sync_emails with action="stop"
 1. **登录失败**：163/QQ邮箱使用授权码，Gmail使用应用密码
 2. **找不到邮件**：默认只显示未读，使用 `unread_only=false`
 3. **连接超时**：检查网络和防火墙设置
+
+## 📂 项目结构
+
+```
+mcp-email-service/
+├── data/                       # 运行时数据目录（自动创建）
+│   ├── email_sync.db          # 邮件同步数据库
+│   ├── sync_config.json       # 同步配置
+│   ├── logs/                  # 日志文件
+│   ├── tmp/                   # 临时文件
+│   └── attachments/           # 下载的附件
+├── src/                       # 源代码
+│   ├── config/               # 配置管理
+│   │   └── paths.py          # 集中路径配置
+│   ├── operations/           # 邮件操作
+│   ├── background/           # 后台同步调度器
+│   └── ...
+├── tests/                     # 测试套件（71/72 通过）
+├── docs/                      # 文档
+│   ├── guides/               # 用户指南
+│   └── archive/              # 历史文档
+├── scripts/                   # 实用脚本
+├── n8n/                      # n8n 工作流模板
+├── config_templates/         # 配置示例
+└── accounts.json             # 邮箱账户配置（用户创建）
+```
+
+### 核心特性
+
+- 🚀 **后台同步自动启动**：MCP 服务启动时自动开始同步
+- 💾 **数据集中管理**：所有运行时数据在 `data/` 目录
+- 🔄 **基于 UID 的操作**：跨操作的稳定邮件标识
+- 🎯 **智能缓存**：比实时 IMAP 查询快 100-500 倍
+- 🔐 **多账户支持**：正确隔离管理多个邮箱账户
+- ⚡ **性能优化**：批量操作共享连接（快 5 倍）
+- 🧪 **充分测试**：71/72 测试通过，约 65% 代码覆盖率
+
+## 📚 文档
+
+### 快速入门指南
+- **[docs/guides/EMAIL_TRANSLATE_WORKFLOW_GUIDE.md](docs/guides/EMAIL_TRANSLATE_WORKFLOW_GUIDE.md)** - 邮件翻译与摘要工作流
+- **[docs/guides/HTTP_API_QUICK_START.md](docs/guides/HTTP_API_QUICK_START.md)** - HTTP API 快速开始
+- **[docs/guides/N8N_EMAIL_MONITORING_GUIDE.md](docs/guides/N8N_EMAIL_MONITORING_GUIDE.md)** - n8n 邮件监控指南
+- **[docs/guides/LARK_SETUP_GUIDE.md](docs/guides/LARK_SETUP_GUIDE.md)** - 飞书 Webhook 设置
+
+### 技术文档
+- **[docs/README.md](docs/README.md)** - 完整文档索引
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - 系统架构设计
+- **[docs/database_design.md](docs/database_design.md)** - 数据库设计
+- **[n8n/README.md](n8n/README.md)** - n8n 工作流详情
+- **[config_templates/](config_templates/)** - 配置模板示例
+- **[data/README.md](data/README.md)** - 数据目录指南
+
+## 💖 支持本项目
+
+如果你觉得本项目有帮助，请考虑：
+
+- ⭐ **给项目加星**以示支持
+- 🐛 **报告 Bug** 或建议功能通过 [Issues](https://github.com/leeguooooo/email-mcp-service/issues)
+- 🤝 **贡献代码**或文档通过 [Pull Requests](https://github.com/leeguooooo/email-mcp-service/pulls)
+- 💰 **赞助开发**通过 [GitHub Sponsors](https://github.com/sponsors/leeguooooo)
+
+### 微信/支付宝赞赏
+
+如果你想支持本项目，可以使用微信支付或支付宝：
+
+<div align="center">
+  <img src=".github/wechatpay.JPG" alt="微信支付二维码" width="200"/>
+  <p><i>扫码支持本项目</i></p>
+</div>
+
+你的支持帮助维护和改进本项目！谢谢！🙏
+
+## 🤝 贡献
+
+欢迎贡献！请随时提交 Issue 和 Pull Request。
+
+### 运行测试
+```bash
+# 运行所有测试
+python3 -m unittest discover tests/
+
+# 查看测试覆盖率
+python3 -m coverage run -m unittest discover tests/
+python3 -m coverage report
+```
 
 ## 许可证
 

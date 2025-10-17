@@ -22,7 +22,7 @@ class SyncScheduler:
         self.config_file = Path(config_file)
         self.config = self._load_config()
         self.sync_manager = EmailSyncManager(
-            self.config.get('storage', {}).get('db_path', 'email_sync.db'),
+            self.config.get('storage', {}).get('db_path', 'data/email_sync.db'),
             self.config.get('sync', {})
         )
         self.scheduler_thread = None
@@ -102,6 +102,23 @@ class SyncScheduler:
         self.scheduler_thread.start()
         
         logger.info(f"Scheduler started with {len(schedule.jobs)} jobs")
+        
+        # 启动时立即执行一次同步（在后台线程中异步执行）
+        startup_delay = self.config.get('sync', {}).get('startup_delay_seconds', 30)
+        logger.info(f"Will trigger initial sync in {startup_delay} seconds")
+        
+        def delayed_initial_sync():
+            """延迟启动初始同步"""
+            time.sleep(startup_delay)
+            if self.running:
+                logger.info("Triggering initial sync on startup")
+                try:
+                    self._scheduled_sync(full_sync=False)
+                except Exception as e:
+                    logger.error(f"Initial sync failed: {e}")
+        
+        initial_sync_thread = threading.Thread(target=delayed_initial_sync, daemon=True)
+        initial_sync_thread.start()
     
     def stop_scheduler(self):
         """停止调度器"""
@@ -240,15 +257,16 @@ class SyncScheduler:
         
         days_to_keep = self.config.get('auto_cleanup', {}).get('days_to_keep', 90)
         cutoff_date = datetime.now() - timedelta(days=days_to_keep)
+        cutoff_date_str = cutoff_date.isoformat()  # Convert to ISO string for SQLite TEXT column
         
-        logger.info(f"Starting cleanup of emails older than {days_to_keep} days")
+        logger.info(f"Starting cleanup of emails older than {days_to_keep} days (before {cutoff_date_str})")
         
         try:
             # 软删除旧邮件
             cursor = self.sync_manager.db.conn.execute("""
                 UPDATE emails SET is_deleted = TRUE, updated_at = CURRENT_TIMESTAMP
                 WHERE date_sent < ? AND is_deleted = FALSE
-            """, (cutoff_date,))
+            """, (cutoff_date_str,))
             
             deleted_count = cursor.rowcount
             self.sync_manager.db.conn.commit()

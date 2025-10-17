@@ -3,6 +3,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![uv](https://img.shields.io/badge/managed%20by-uv-purple)](https://github.com/astral-sh/uv)
+[![Tests](https://img.shields.io/badge/tests-71%2F72%20passing-brightgreen)](./tests)
+[![GitHub Sponsors](https://img.shields.io/github/sponsors/leeguooooo?logo=github)](https://github.com/sponsors/leeguooooo)
 
 A unified MCP email service supporting multi-account management with **AI-powered intelligent monitoring and notifications**.
 
@@ -217,6 +219,42 @@ tail -f email_monitor.log
 env | grep -E "(FEISHU|OPENAI|PYTHONPATH)"
 ```
 
+## 📂 Project Structure
+
+```
+mcp-email-service/
+├── data/                       # Runtime data directory (auto-created)
+│   ├── email_sync.db          # Email synchronization database
+│   ├── sync_config.json       # Sync configuration
+│   ├── logs/                  # Log files
+│   ├── tmp/                   # Temporary files
+│   └── attachments/           # Downloaded attachments
+├── src/                       # Source code
+│   ├── config/               # Configuration management
+│   │   └── paths.py          # Centralized path configuration
+│   ├── operations/           # Email operations
+│   ├── background/           # Background sync scheduler
+│   └── ...
+├── tests/                     # Test suite (71/72 passing)
+├── docs/                      # Documentation
+│   ├── guides/               # User guides
+│   └── archive/              # Historical documents
+├── scripts/                   # Utility scripts
+├── n8n/                      # n8n workflow templates
+├── config_templates/         # Configuration examples
+└── accounts.json             # Email account configuration (user-created)
+```
+
+### Key Features
+
+- 🚀 **Auto-start Background Sync**: Synchronization starts automatically with MCP server
+- 💾 **Centralized Data Management**: All runtime data in `data/` directory
+- 🔄 **UID-based Operations**: Stable email identification across operations
+- 🎯 **Smart Caching**: 100-500x faster than live IMAP queries
+- 🔐 **Multi-account Support**: Manage multiple email accounts with proper isolation
+- ⚡ **Performance Optimized**: Shared connections for batch operations (5x faster)
+- 🧪 **Well Tested**: 71/72 tests passing, ~65% code coverage
+
 ## 📚 Documentation
 
 ### Quick Start Guides
@@ -232,9 +270,31 @@ env | grep -E "(FEISHU|OPENAI|PYTHONPATH)"
 
 ### Technical Documentation
 - **[docs/README.md](docs/README.md)** - Complete documentation index
-- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System architecture
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System architecture and design
+- **[docs/database_design.md](docs/database_design.md)** - Database schema and design
 - **[n8n/README.md](n8n/README.md)** - n8n workflow details
-- **[config_templates/](config_templates/)** - Configuration templates
+- **[config_templates/](config_templates/)** - Configuration templates and examples
+- **[data/README.md](data/README.md)** - Data directory usage guide
+
+## 💖 Support This Project
+
+If you find this project helpful, please consider:
+
+- ⭐ **Star this repository** to show your support
+- 🐛 **Report bugs** or suggest features via [Issues](https://github.com/leeguooooo/email-mcp-service/issues)
+- 🤝 **Contribute** code or documentation via [Pull Requests](https://github.com/leeguooooo/email-mcp-service/pulls)
+- 💰 **Sponsor** the development via [GitHub Sponsors](https://github.com/sponsors/leeguooooo)
+
+### Support via WeChat Pay / Alipay
+
+If you'd like to support this project, you can use WeChat Pay or Alipay:
+
+<div align="center">
+  <img src=".github/wechatpay.JPG" alt="WeChat Pay QR Code" width="200"/>
+  <p><i>Scan to support via WeChat Pay</i></p>
+</div>
+
+Your support helps maintain and improve this project! Thank you! 🙏
 
 ## 🤝 Contributing
 

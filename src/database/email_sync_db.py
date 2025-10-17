@@ -12,13 +12,17 @@ import email
 from email.header import decode_header
 import email.utils
 
+from ..config.paths import EMAIL_SYNC_DB
+
 logger = logging.getLogger(__name__)
 
 class EmailSyncDatabase:
     """邮件同步数据库管理器"""
     
-    def __init__(self, db_path: str = "email_sync.db"):
+    def __init__(self, db_path: str = None):
         """初始化数据库连接"""
+        if db_path is None:
+            db_path = EMAIL_SYNC_DB
         self.db_path = Path(db_path)
         self.conn = None
         self._initialize_database()

@@ -32,7 +32,7 @@
     "max_delay_minutes": 60
   },
   "storage": {
-    "db_path": "email_sync.db",
+    "db_path": "data/email_sync.db",
     "compress_content": true,
     "vacuum_interval_days": 7,
     "backup_enabled": true,

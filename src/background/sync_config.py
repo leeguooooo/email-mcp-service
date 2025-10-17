@@ -40,7 +40,7 @@ class SyncConfigManager:
             "max_delay_minutes": 60,   # 最大延迟时间
         },
         "storage": {
-            "db_path": "email_sync.db",
+            "db_path": "data/email_sync.db",
             "compress_content": True,      # 压缩邮件内容
             "vacuum_interval_days": 7,     # 数据库清理间隔
             "backup_enabled": True,        # 自动备份
@@ -324,7 +324,7 @@ class SyncConfigManager:
             "max_concurrent_accounts": self.config.get('performance', {}).get('max_concurrent_accounts', 2),
             "cleanup_enabled": self.config.get('cleanup', {}).get('enabled', False),
             "days_to_keep": self.config.get('cleanup', {}).get('days_to_keep', 90),
-            "db_path": self.config.get('storage', {}).get('db_path', 'email_sync.db'),
+            "db_path": self.config.get('storage', {}).get('db_path', 'data/email_sync.db'),
             "log_level": self.config.get('logging', {}).get('level', 'INFO'),
             "config_file": str(self.config_file)
         }

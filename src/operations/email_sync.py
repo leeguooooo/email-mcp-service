@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 class EmailSyncManager:
     """邮件同步管理器"""
     
-    def __init__(self, db_path: str = "email_sync.db", config: Dict[str, Any] = None):
+    def __init__(self, db_path: str = None, config: Dict[str, Any] = None):
         """初始化同步管理器"""
         self.account_manager = AccountManager()
         self.db = EmailSyncDatabase(db_path)

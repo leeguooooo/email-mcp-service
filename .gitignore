@@ -75,14 +75,20 @@ accounts.json
 /attachments/
 /downloads/
 
-# Database files
-*.db
-*.db-wal
-*.db-shm
+# Runtime data directory (all generated files go here)
+/data/
+!data/.gitkeep
+!data/README.md
+
+# Legacy database files (if any remain in root)
+/*.db
+/*.db-wal
+/*.db-shm
 email_sync.db*
 
-# Sync configuration (contains sensitive paths)
-sync_config.json
+# Legacy sync configuration (moved to data/)
+/sync_config.json
+/sync_health_history.json
 
 # Temporary files
 *.tmp

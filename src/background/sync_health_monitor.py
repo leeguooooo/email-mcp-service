@@ -447,8 +447,9 @@ def get_health_monitor() -> SyncHealthMonitor:
     """获取全局健康监控实例"""
     global _monitor_instance
     if _monitor_instance is None:
+        from ..config.paths import SYNC_HEALTH_HISTORY_JSON
         _monitor_instance = SyncHealthMonitor(
-            history_file="sync_health_history.json",
+            history_file=SYNC_HEALTH_HISTORY_JSON,
             max_history_days=30
         )
     return _monitor_instance

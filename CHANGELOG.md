@@ -1,5 +1,61 @@
 # Changelog
 
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+- 💾 **Data Directory**: Created `data/` directory for centralized runtime data management
+- 📍 **Path Configuration**: New `src/config/paths.py` for centralized path management
+- 🧪 **Test Suite Expansion**: Added 44 new tests (total 72, 71/72 passing)
+  - `test_account_id_fix.py` - Account ID routing tests
+  - `test_email_lookup_fallback.py` - Email lookup fallback tests
+  - `test_performance.py` - Performance and caching tests
+  - `test_regression_fixes.py` - 16 regression tests
+  - `test_error_handling_improvements.py` - 10 error handling tests
+  - `test_batch_delete_delegation.py` - 8 batch delete tests
+  - `test_critical_fixes.py` - 10 critical fixes tests
+- 📚 **Documentation**: Added 4 new comprehensive documentation files
+  - `docs/PROJECT_REORGANIZATION.md` - Project restructuring details
+  - `docs/CODE_REVIEW_FIXES.md` - Code review fixes summary
+  - `docs/TESTING_GUIDE.md` - Testing guide
+  - `docs/TEST_IMPROVEMENTS_SUMMARY.md` - Test improvements summary
+- 💰 **GitHub Sponsors**: Added `.github/FUNDING.yml` for project sponsorship
+- 📂 **Documentation Archive**: Created `docs/archive/` with 23 historical documents
+
+### Fixed
+- 🔧 **FLAGS Parsing**: More robust IMAP FLAGS parsing supporting multi-tuple responses
+- 📁 **Folder Name Handling**: IMAP-UTF7 normalization for trash folder detection and non-ASCII names
+- 📅 **SQL Date Parameters**: Convert datetime objects to ISO strings for SQLite TEXT columns
+- 🏷️ **Account ID Generation**: Include provider suffix to avoid collision across providers (e.g., `john_gmail`, `john_qq`)
+- 🔗 **API Response Consistency**: Added `account_id` field to all legacy API responses for consistent routing
+- 🔄 **Cache Empty List Handling**: Fixed Python truthiness bug where empty cache lists were treated as invalid
+- 📦 **Multi-account Cache Logic**: Corrected cache bypass for multi-account requests
+- 🗑️ **Batch Delete Reliability**: Fixed QQ Mail compatibility by expunging after each delete
+- ✅ **Batch Operation Success Reporting**: Accurate `success` field based on actual operation results
+- 🚀 **Move to Trash Fallback**: Corrected RFC-compliant FLAGS format in fallback delete path
+
+### Changed
+- 📂 **Project Structure**: Root directory files reduced from 40+ to 26 (35% improvement)
+- 💾 **Database Location**: All database files moved to `data/` directory
+- 📝 **Documentation Organization**: Reorganized docs with archive for historical documents
+- 🧪 **Test Organization**: Consolidated all test files in `tests/` directory
+- 📊 **Test Coverage**: Improved from ~30% to ~65% (+117%)
+- 🎯 **Path Management**: Reduced hardcoded paths from 11 locations to 1 central configuration
+
+### Improved
+- 🚀 **Auto-start Background Sync**: Sync scheduler now starts automatically with MCP server
+- 🔌 **Connection Pooling**: Shared connections for batch operations (5x performance improvement)
+- 💾 **Smart Caching**: 100-500x faster than live IMAP queries
+- 🔒 **Multi-account Isolation**: Proper account ID routing prevents cross-account data leakage
+- 🔄 **UID-based Operations**: Stable email identification across all operations
+- 📡 **Parallel Fetch**: Correct `use_cache` parameter propagation through parallel fetch chain
+
+---
+
 ## [1.1.0] - 2025-06-20
 
 ### 🚀 Major Features

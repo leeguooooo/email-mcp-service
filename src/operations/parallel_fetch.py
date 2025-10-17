@@ -30,10 +30,14 @@ class ParallelEmailFetcher:
         account_info: Dict[str, Any], 
         limit: int, 
         unread_only: bool, 
-        folder: str
+        folder: str,
+        use_cache: bool = False
     ) -> Dict[str, Any]:
         """
         Fetch emails from a single account
+        
+        Args:
+            use_cache: Whether to use cached data from email_sync.db
         
         Returns:
             Dict with emails and account info
@@ -44,8 +48,8 @@ class ParallelEmailFetcher:
             
             logger.info(f"Fetching from {account_email}...")
             
-            # Use existing fetch_emails function
-            result = fetch_emails(limit, unread_only, folder, account_id)
+            # CRITICAL: Forward use_cache to fetch_emails
+            result = fetch_emails(limit, unread_only, folder, account_id, use_cache)
             
             if "error" not in result:
                 # Add account email to each email
@@ -89,10 +93,14 @@ class ParallelEmailFetcher:
         accounts: List[Dict[str, Any]],
         limit: int = 50,
         unread_only: bool = False,
-        folder: str = "INBOX"
+        folder: str = "INBOX",
+        use_cache: bool = False
     ) -> Dict[str, Any]:
         """
         Fetch emails from all accounts in parallel
+        
+        Args:
+            use_cache: Whether to use cached data from email_sync.db
         
         Returns:
             Combined results from all accounts
@@ -108,13 +116,15 @@ class ParallelEmailFetcher:
         # Use ThreadPoolExecutor for parallel fetching
         with ThreadPoolExecutor(max_workers=min(self.max_workers, len(accounts))) as executor:
             # Submit all tasks
+            # CRITICAL: Forward use_cache to each account fetch
             future_to_account = {
                 executor.submit(
                     self.fetch_from_account,
                     account,
                     limit,
                     unread_only,
-                    folder
+                    folder,
+                    use_cache
                 ): account
                 for account in accounts
             }
@@ -183,9 +193,20 @@ def fetch_emails_parallel(
     accounts: List[Dict[str, Any]],
     limit: int = 50,
     unread_only: bool = False,
-    folder: str = "INBOX"
+    folder: str = "INBOX",
+    use_cache: bool = False
 ) -> Dict[str, Any]:
     """
     Convenience function to fetch emails in parallel
+    
+    Args:
+        accounts: List of account configurations
+        limit: Maximum number of emails to fetch per account
+        unread_only: Only fetch unread emails
+        folder: Folder name to fetch from
+        use_cache: Whether to use cached data from email_sync.db
+    
+    Returns:
+        Combined results from all accounts
     """
-    return parallel_fetcher.fetch_all_parallel(accounts, limit, unread_only, folder)
+    return parallel_fetcher.fetch_all_parallel(accounts, limit, unread_only, folder, use_cache)

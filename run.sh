@@ -7,7 +7,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-if command -v uv >/dev/null 2>&1; then
+# Try hardcoded uv path first (for Cursor MCP environment)
+if [ -x "/Users/leo/.local/bin/uv" ]; then
+  exec /Users/leo/.local/bin/uv run python -m src.main "$@"
+# Then check PATH
+elif command -v uv >/dev/null 2>&1; then
   exec uv run python -m src.main "$@"
 else
   echo "Warning: uv not found in PATH; falling back to system python3." >&2

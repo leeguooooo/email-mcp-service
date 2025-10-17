@@ -60,7 +60,8 @@ class AccountManager:
                     'email': email,
                     'password': password,
                     'provider': provider,
-                    'description': 'Environment variable account'
+                    'description': 'Environment variable account',
+                    'id': 'env_default'
                 }
             return None
         
@@ -72,6 +73,14 @@ class AccountManager:
                 result = account_data.copy()
                 result['id'] = account_id
                 return result
+            
+            # Fallback: allow lookup by email address
+            if '@' in account_id:
+                for acc_id, acc_data in accounts.items():
+                    if acc_data.get('email') == account_id:
+                        result = acc_data.copy()
+                        result['id'] = acc_id
+                        return result
         
         # Return default account
         default_id = self.accounts_data.get('default_account')

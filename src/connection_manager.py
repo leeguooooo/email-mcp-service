@@ -60,6 +60,26 @@ class ConnectionManager:
         self.provider = account_config.get('provider', 'custom')
         self.account_config = account_config
         
+        # Store the real account ID (e.g. "leeguoo_qq") for proper routing
+        self.account_id = account_config.get('id')
+        
+        # Auto-derive ID from email if missing (for backward compatibility with tests)
+        # but warn since this can cause cross-account mixups in production
+        if not self.account_id:
+            if self.email:
+                # Generate a stable ID from email + provider (to avoid collision)
+                # Format: localpart_provider (e.g., "john_gmail", "john_qq")
+                import re
+                local_part = re.sub(r'[^a-zA-Z0-9_]', '_', self.email.split('@')[0])
+                provider_suffix = re.sub(r'[^a-zA-Z0-9_]', '_', self.provider) if self.provider else 'unknown'
+                self.account_id = f"{local_part}_{provider_suffix}"
+                logger.warning(
+                    f"Account config missing 'id' field, auto-derived: '{self.account_id}' from {self.email} + provider. "
+                    f"Please add 'id' field to account config to avoid routing issues."
+                )
+            else:
+                raise ValueError(f"Account config missing both 'id' and 'email' fields")
+        
         # Get provider config or use custom settings
         if self.provider in self.EMAIL_PROVIDERS:
             self.config = self.EMAIL_PROVIDERS[self.provider].copy()

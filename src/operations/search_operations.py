@@ -49,6 +49,18 @@ class SearchOperations:
             mail = self.connection_manager.connect_imap()
             
             try:
+                # CRITICAL: Use only canonical account ID, no email fallback
+                # to prevent cross-account routing issues
+                canonical_account_id = self.connection_manager.account_id
+                
+                if not canonical_account_id:
+                    logger.error("ConnectionManager missing account_id - this should never happen")
+                    return {
+                        'success': False,
+                        'error': 'Account ID not configured properly',
+                        'emails': []
+                    }
+                
                 # Select folder
                 result, data = mail.select(folder, readonly=True)
                 if result != 'OK':
@@ -61,53 +73,55 @@ class SearchOperations:
                 
                 logger.info(f"Search criteria: {search_criteria}")
                 
-                # Perform search
+                # Perform UID search (more stable than sequence numbers)
                 try:
                     if isinstance(search_criteria, list):
-                        result, data = mail.search(None, *search_criteria)
+                        result, data = mail.uid('search', None, *search_criteria)
                     else:
                         # Handle unicode in search criteria
                         if any(ord(c) > 127 for c in str(search_criteria)):
                             # Try UTF-8 charset for non-ASCII search
                             try:
-                                result, data = mail.search('UTF-8', search_criteria)
+                                result, data = mail.uid('search', 'UTF-8', search_criteria)
                             except Exception as e:
-                                logger.warning(f"UTF-8 search failed: {e}, trying without charset")
+                                logger.warning(f"UTF-8 charset search failed (expected for 163/QQ): {e}, trying without charset")
                                 # Encode the search string properly
                                 search_bytes = search_criteria.encode('utf-8')
-                                result, data = mail.search(None, search_bytes)
+                                result, data = mail.uid('search', None, search_bytes)
                         else:
-                            result, data = mail.search(None, search_criteria)
+                            result, data = mail.uid('search', None, search_criteria)
                 except Exception as e:
                     logger.error(f"Search error: {e}")
                     # Fallback to basic search if charset fails
-                    result, data = mail.search(None, 'ALL')
+                    result, data = mail.uid('search', None, 'ALL')
                 
                 if result != 'OK':
                     raise ValueError("Search failed")
                 
-                email_ids = data[0].split()
-                total_found = len(email_ids)
-                
-                if not email_ids:
+                # Check for None/empty data
+                if not data or not data[0]:
                     return {
                         'success': True,
                         'emails': [],
                         'total_found': 0,
                         'search_criteria': str(search_criteria),
                         'folder': folder,
-                        'account': self.connection_manager.email
+                        'account': self.connection_manager.email,
+                        'account_id': canonical_account_id
                     }
                 
+                email_uids = data[0].split()
+                total_found = len(email_uids)
+                
                 # Limit results
-                email_ids = email_ids[-limit:]
-                email_ids.reverse()  # Most recent first
+                email_uids = email_uids[-limit:]
+                email_uids.reverse()  # Most recent first
                 
                 # Fetch email details
                 emails = []
-                for email_id in email_ids:
+                for uid in email_uids:
                     try:
-                        email_data = self._fetch_email_summary(mail, email_id)
+                        email_data = self._fetch_email_summary(mail, uid, use_uid=True)
                         
                         # Filter by attachments if specified
                         if has_attachments is not None:
@@ -117,14 +131,17 @@ class SearchOperations:
                         
                         # Additional filtering for body search (IMAP doesn't support body search well)
                         if query and search_in in ['body', 'all']:
-                            if not self._check_body_contains(mail, email_id, query):
+                            if not self._check_body_contains(mail, uid, query, use_uid=True):
                                 if search_in == 'body':
                                     continue
+                        
+                        # Add account_id to each email (use real account ID for proper routing)
+                        email_data['account_id'] = canonical_account_id
                         
                         emails.append(email_data)
                         
                     except Exception as e:
-                        logger.warning(f"Failed to fetch email {email_id}: {e}")
+                        logger.warning(f"Failed to fetch email UID {uid}: {e}")
                 
                 return {
                     'success': True,
@@ -133,7 +150,8 @@ class SearchOperations:
                     'displayed': len(emails),
                     'search_criteria': str(search_criteria),
                     'folder': folder,
-                    'account': self.connection_manager.email
+                    'account': self.connection_manager.email,
+                    'account_id': canonical_account_id
                 }
                 
             finally:
@@ -207,16 +225,36 @@ class SearchOperations:
         else:
             return ' '.join(criteria)
     
-    def _fetch_email_summary(self, mail: imaplib.IMAP4_SSL, email_id: str) -> Dict[str, Any]:
+    def _fetch_email_summary(self, mail: imaplib.IMAP4_SSL, email_id: str, use_uid: bool = False) -> Dict[str, Any]:
         """Fetch summary information for an email"""
-        # Fetch email data
-        result, data = mail.fetch(email_id, '(RFC822.HEADER FLAGS)')
+        # Fetch email data using UID if specified
+        if use_uid:
+            result, data = mail.uid('fetch', email_id, '(RFC822.HEADER FLAGS)')
+        else:
+            result, data = mail.fetch(email_id, '(RFC822.HEADER FLAGS)')
         
-        if result != 'OK':
+        if result != 'OK' or not data or not data[0] or data[0] in (None, b''):
             raise ValueError(f"Failed to fetch email {email_id}")
+        
+        # Parse FLAGS from response - more robust parsing
+        # IMAP response format: (b'1 (FLAGS (\\Seen) RFC822.HEADER {size}', b'header...')
+        flags_str = ""
+        try:
+            # Combine all response parts to handle multi-tuple responses
+            for item in data:
+                if isinstance(item, tuple) and len(item) > 0:
+                    if isinstance(item[0], bytes):
+                        flags_str += item[0].decode('utf-8', errors='ignore')
+        except:
+            flags_str = ""
+        
+        is_unread = '\\Seen' not in flags_str
+        is_flagged = '\\Flagged' in flags_str
         
         # Parse headers
         header_data = data[0][1]
+        if not header_data:
+            raise ValueError(f"Email {email_id} has no header data")
         msg = message_from_bytes(header_data)
         
         # Decode subject
@@ -242,16 +280,14 @@ class SearchOperations:
         except:
             date_formatted = date_str
         
-        # Check flags
-        flags = data[0][0].decode('utf-8')
-        is_unread = '\\Seen' not in flags
-        is_flagged = '\\Flagged' in flags
-        
         # Check for attachments (simplified check based on content-type)
         has_attachments = 'multipart' in msg.get_content_type().lower()
         
+        email_id_str = email_id.decode() if isinstance(email_id, bytes) else str(email_id)
+        
         return {
-            'id': email_id.decode() if isinstance(email_id, bytes) else email_id,
+            'id': email_id_str,
+            'uid': email_id_str if use_uid else None,  # Include UID if used
             'subject': subject,
             'from': from_addr,
             'to': to_addr,
@@ -262,16 +298,22 @@ class SearchOperations:
             'message_id': message_id
         }
     
-    def _check_body_contains(self, mail: imaplib.IMAP4_SSL, email_id: str, query: str) -> bool:
+    def _check_body_contains(self, mail: imaplib.IMAP4_SSL, email_id: str, query: str, use_uid: bool = False) -> bool:
         """Check if email body contains the query text"""
         try:
-            # Fetch full email
-            result, data = mail.fetch(email_id, '(RFC822)')
-            if result != 'OK':
+            # Fetch full email using UID if specified
+            if use_uid:
+                result, data = mail.uid('fetch', email_id, '(RFC822)')
+            else:
+                result, data = mail.fetch(email_id, '(RFC822)')
+                
+            if result != 'OK' or not data or not data[0] or data[0] in (None, b''):
                 return False
             
             # Parse email
             raw_email = data[0][1]
+            if not raw_email:
+                return False
             msg = message_from_bytes(raw_email)
             
             # Extract body text
