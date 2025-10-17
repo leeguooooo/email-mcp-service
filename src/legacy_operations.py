@@ -28,17 +28,63 @@ def get_connection_manager(account_id: Optional[str] = None) -> ConnectionManage
     return ConnectionManager(account)
 
 def decode_mime_words(s):
-    """Decode MIME encoded words in headers"""
+    """
+    Decode MIME encoded words in headers with robust charset handling.
+    
+    Handles non-standard charsets like 'unknown-8bit' by falling back to latin-1.
+    """
     if not s:
         return ""
     decoded = decode_header(s)
     result = ""
     for text, encoding in decoded:
         if isinstance(text, bytes):
-            result += text.decode(encoding or 'utf-8', errors='ignore')
+            # Normalize and validate encoding
+            if encoding:
+                encoding_lower = encoding.lower()
+                # Map known problematic encodings to safe alternatives
+                if encoding_lower in ('unknown-8bit', 'x-unknown', '8bit', 'unknown'):
+                    encoding = 'latin-1'  # Safe fallback that handles all byte values
+            else:
+                encoding = 'utf-8'  # Default for None
+            
+            try:
+                result += text.decode(encoding, errors='ignore')
+            except (LookupError, UnicodeDecodeError):
+                # Final fallback for truly unknown codecs
+                logger.debug(f"Unknown encoding '{encoding}', falling back to latin-1")
+                result += text.decode('latin-1', errors='replace')
         else:
             result += text
     return result
+
+def safe_parse_email(raw_email: bytes) -> email.message.Message:
+    """
+    安全地解析邮件，支持编码容错
+    
+    当遇到未知编码（如 'unknown-8bit'）时，使用 latin-1 作为回退编码。
+    latin-1 可以解码任何字节序列，确保邮件不会因编码问题而丢失。
+    
+    Args:
+        raw_email: 原始邮件字节数据
+        
+    Returns:
+        解析后的邮件对象
+    """
+    try:
+        # 首先尝试正常解析
+        return email.message_from_bytes(raw_email)
+    except (LookupError, UnicodeDecodeError) as e:
+        # 编码错误时使用 latin-1 强制解码
+        logger.warning(f"Email parsing failed with encoding error: {e}, using latin-1 fallback")
+        try:
+            # latin-1 可以解码任何字节序列，不会抛出异常
+            text = raw_email.decode('latin-1', errors='replace')
+            return email.message_from_string(text)
+        except Exception as fallback_error:
+            # 如果仍然失败，记录错误并抛出
+            logger.error(f"Failed to parse email even with fallback: {fallback_error}")
+            raise
 
 def _normalize_folder_name(folder: Optional[Union[str, bytes]]) -> Union[str, bytes]:
     """
@@ -225,7 +271,7 @@ def fetch_emails(limit=50, unread_only=False, folder="INBOX", account_id=None, u
                     # CRITICAL: Use UID FETCH to get stable identifiers
                     result, data = mail.uid('fetch', email_uid, '(RFC822)')
                     raw_email = data[0][1]
-                    msg = email.message_from_bytes(raw_email)
+                    msg = safe_parse_email(raw_email)
                     
                     # Parse email data
                     from_addr = decode_mime_words(msg.get("From", ""))
@@ -402,7 +448,7 @@ def get_email_detail(email_id, folder="INBOX", account_id=None):
             raise Exception(f"Email {email_id} not found or has been deleted")
         
         raw_email = data[0][1]
-        msg = email.message_from_bytes(raw_email)
+        msg = safe_parse_email(raw_email)
         
         # Extract headers
         from_addr = decode_mime_words(msg.get("From", ""))
