@@ -206,7 +206,11 @@ def _fetch_multi_folder_smart(account: Dict[str, Any], provider: str, limit: int
                 account_id=account['id']
             )
             
-            if 'error' not in result and result.get('emails'):
+            # Skip folders that don't exist or have errors
+            if 'error' in result:
+                continue
+                
+            if result.get('emails'):
                 emails = result['emails']
                 # Add folder info
                 for email in emails:

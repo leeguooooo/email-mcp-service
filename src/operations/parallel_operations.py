@@ -230,8 +230,8 @@ class ParallelBatchOperations:
             try:
                 result, data = mail.select(folder)
                 if result != 'OK':
-                    logger.error(f"Cannot select folder '{folder}' for account {account_id}: {data}")
-                    return {'success': False, 'error': f'Cannot select folder {folder}'}
+                    logger.debug(f"Folder '{folder}' not available for account {account_id}: {data}")
+                    return {'success': False, 'error': f'Folder {folder} not available'}
                 
                 deleted_count = 0
                 failed_ids = []
@@ -302,8 +302,8 @@ class ParallelBatchOperations:
             try:
                 result, data = mail.select(folder)
                 if result != 'OK':
-                    logger.error(f"Cannot select folder '{folder}' for account {account_id}: {data}")
-                    return {'success': False, 'error': f'Cannot select folder {folder}'}
+                    logger.debug(f"Folder '{folder}' not available for account {account_id}: {data}")
+                    return {'success': False, 'error': f'Folder {folder} not available'}
                 
                 marked_count = 0
                 failed_ids = []
@@ -380,8 +380,8 @@ class ParallelBatchOperations:
             try:
                 result, data = mail.select(source_folder)
                 if result != 'OK':
-                    logger.error(f"Cannot select folder '{source_folder}' for account {account_id}: {data}")
-                    return {'success': False, 'error': f'Cannot select source folder {source_folder}'}
+                    logger.debug(f"Source folder '{source_folder}' not available for account {account_id}: {data}")
+                    return {'success': False, 'error': f'Source folder {source_folder} not available'}
                 
                 moved_count = 0
                 failed_ids = []

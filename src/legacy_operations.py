@@ -245,7 +245,14 @@ def fetch_emails(limit=50, unread_only=False, folder="INBOX", account_id=None, u
             selected_folder = _normalize_folder_name(folder)
             result, data = mail.select(selected_folder)
             if result != 'OK':
-                raise ValueError(f"Cannot select folder '{folder}': {data}")
+                # Log as debug instead of error to reduce noise
+                logger.debug(f"Folder '{folder}' not available: {data}")
+                return {
+                    'emails': [],
+                    'total_in_folder': 0,
+                    'unread_count': 0,
+                    'error': f"Folder '{folder}' not available"
+                }
             
             # CRITICAL: Use UID search instead of sequence numbers
             # UIDs are stable even when messages are added/deleted
