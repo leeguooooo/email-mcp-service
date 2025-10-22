@@ -11,6 +11,22 @@ import email
 
 logger = logging.getLogger(__name__)
 
+
+def _logout_safely(mail):
+    """Close and logout IMAP connection without raising state errors."""
+    if not mail:
+        return
+    try:
+        if getattr(mail, 'state', '').upper() == 'SELECTED':
+            mail.close()
+    except Exception:
+        pass
+    try:
+        mail.logout()
+    except Exception:
+        pass
+
+
 class EmailOperations:
     """Handles enhanced email operations"""
     
@@ -53,8 +69,7 @@ class EmailOperations:
                     raise ValueError(f"Failed to mark as unread: {data}")
                     
             finally:
-                mail.close()
-                mail.logout()
+                _logout_safely(mail)
                 
         except Exception as e:
             logger.error(f"Failed to mark email as unread: {e}")
@@ -121,8 +136,7 @@ class EmailOperations:
                     raise ValueError(f"Failed to update flag: {data}")
                     
             finally:
-                mail.close()
-                mail.logout()
+                _logout_safely(mail)
                 
         except Exception as e:
             logger.error(f"Failed to flag email: {e}")
@@ -235,8 +249,7 @@ class EmailOperations:
                 }
                 
             finally:
-                mail.close()
-                mail.logout()
+                _logout_safely(mail)
                 
         except Exception as e:
             logger.error(f"Failed to get attachments: {e}")

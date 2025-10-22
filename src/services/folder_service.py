@@ -94,21 +94,15 @@ class FolderService:
             
             def sequential_move(ids: List[str], src_fld: str, tgt_fld: str, **kwargs) -> Dict[str, Any]:
                 """Sequential fallback for moving emails"""
-                results = []
-                for email_id in ids:
-                    res = folder_ops.move_email(email_id, src_fld, tgt_fld)
-                    results.append(res)
-                
-                success_count = sum(1 for r in results if r.get('success'))
-                return {
-                    'success': success_count == len(results),
-                    'moved_count': success_count,
-                    'total': len(results)
-                }
+                result = folder_ops.move_emails_to_folder(ids, tgt_fld, src_fld)
+                result.setdefault('total', len(ids))
+                result.setdefault('moved_count', result.get('moved_count', 0))
+                result.setdefault('success', result.get('success', 'error' not in result))
+                return result
             
             # Single email - direct execution
             if len(email_ids) == 1:
-                result = folder_ops.move_email(email_ids[0], source_folder, target_folder)
+                result = folder_ops.move_emails_to_folder(email_ids, target_folder, source_folder)
                 return self._ensure_success_field(result)
             
             # Multiple emails - try parallel, fallback to sequential

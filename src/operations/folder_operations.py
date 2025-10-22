@@ -8,6 +8,20 @@ from email.header import decode_header
 
 logger = logging.getLogger(__name__)
 
+
+def _logout_safely(mail):
+    if not mail:
+        return
+    try:
+        if getattr(mail, 'state', '').upper() == 'SELECTED':
+            mail.close()
+    except Exception:
+        pass
+    try:
+        mail.logout()
+    except Exception:
+        pass
+
 class FolderOperations:
     """Handles folder-related operations"""
     
@@ -72,7 +86,7 @@ class FolderOperations:
                 }
                 
             finally:
-                mail.logout()
+                _logout_safely(mail)
                 
         except Exception as e:
             logger.error(f"Failed to list folders: {e}")
@@ -118,7 +132,7 @@ class FolderOperations:
                     raise ValueError(f"Failed to create folder: {data}")
                     
             finally:
-                mail.logout()
+                _logout_safely(mail)
                 
         except Exception as e:
             logger.error(f"Failed to create folder: {e}")
@@ -156,7 +170,7 @@ class FolderOperations:
                     raise ValueError(f"Failed to delete folder: {data}")
                     
             finally:
-                mail.logout()
+                _logout_safely(mail)
                 
         except Exception as e:
             logger.error(f"Failed to delete folder: {e}")
@@ -195,7 +209,7 @@ class FolderOperations:
                     raise ValueError(f"Failed to rename folder: {data}")
                     
             finally:
-                mail.logout()
+                _logout_safely(mail)
                 
         except Exception as e:
             logger.error(f"Failed to rename folder: {e}")
@@ -271,8 +285,7 @@ class FolderOperations:
                 return result_data
                 
             finally:
-                mail.close()
-                mail.logout()
+                _logout_safely(mail)
                 
         except Exception as e:
             logger.error(f"Failed to move emails: {e}")
@@ -333,8 +346,7 @@ class FolderOperations:
                 }
                 
             finally:
-                mail.close()
-                mail.logout()
+                _logout_safely(mail)
                 
         except Exception as e:
             logger.error(f"Failed to empty folder: {e}")
