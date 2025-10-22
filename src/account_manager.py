@@ -6,13 +6,16 @@ import os
 import logging
 from typing import Dict, Any, Optional, List
 from pathlib import Path
+from .config.paths import ACCOUNTS_JSON
 
 logger = logging.getLogger(__name__)
 
 class AccountManager:
     """Manages multiple email account configurations"""
     
-    def __init__(self, config_file: str = "accounts.json"):
+    def __init__(self, config_file: str = None):
+        if config_file is None:
+            config_file = ACCOUNTS_JSON
         self.config_file = Path(config_file)
         self.accounts_data = self._load_accounts()
     

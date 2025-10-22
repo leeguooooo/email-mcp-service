@@ -21,8 +21,8 @@ NOTIFICATION_HISTORY_DB = str(DATA_DIR / "notification_history.db")
 SYNC_CONFIG_JSON = str(DATA_DIR / "sync_config.json")
 SYNC_HEALTH_HISTORY_JSON = str(DATA_DIR / "sync_health_history.json")
 
-# 账户配置文件（根目录）
-ACCOUNTS_JSON = str(PROJECT_ROOT / "accounts.json")
+# 账户配置文件（数据目录）
+ACCOUNTS_JSON = str(DATA_DIR / "accounts.json")
 
 # 日志目录
 LOG_DIR = DATA_DIR / "logs"
