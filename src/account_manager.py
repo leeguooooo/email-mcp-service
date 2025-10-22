@@ -50,7 +50,7 @@ class AccountManager:
         accounts = self.accounts_data.get('accounts', {})
         
         if not accounts:
-            # Fallback to environment variables
+            # Fallback to environment variables (development mode)
             email = os.getenv('EMAIL_ADDRESS')
             password = os.getenv('EMAIL_PASSWORD')
             provider = os.getenv('EMAIL_PROVIDER', '163')
@@ -63,6 +63,7 @@ class AccountManager:
                     'description': 'Environment variable account',
                     'id': 'env_default'
                 }
+            logger.debug('No accounts configured; environment variables missing, returning None')
             return None
         
         # Get specific account or default

@@ -37,7 +37,9 @@ class EmailToolHandlers:
                 limit=args.get('limit', 50),
                 unread_only=args.get('unread_only', False),
                 folder=args.get('folder', 'INBOX'),
-                account_id=args.get('account_id')
+                account_id=args.get('account_id'),
+                offset=args.get('offset', 0),
+                include_metadata=args.get('include_metadata', True)
             )
             
             if 'error' in result:
@@ -88,7 +90,9 @@ class EmailToolHandlers:
                 email_ids=args['email_ids'],
                 mark_as=args['mark_as'],
                 folder=args.get('folder', 'INBOX'),
-                account_id=args.get('account_id')
+                account_id=args.get('account_id'),
+                dry_run=args.get('dry_run', False),
+                email_accounts=args.get('email_accounts')
             )
             
             if result.get('success'):
@@ -118,7 +122,9 @@ class EmailToolHandlers:
                 folder=args.get('folder', 'INBOX'),
                 permanent=args.get('permanent', False),
                 trash_folder=args.get('trash_folder', 'Trash'),
-                account_id=args.get('account_id')
+                account_id=args.get('account_id'),
+                dry_run=args.get('dry_run', False),
+                email_accounts=args.get('email_accounts')
             )
             
             if result.get('success'):
@@ -152,7 +158,8 @@ class EmailToolHandlers:
                 unread_only=args.get('unread_only', False),
                 has_attachments=args.get('has_attachments'),
                 limit=args.get('limit', 50),
-                account_id=args.get('account_id')
+                account_id=args.get('account_id'),
+                offset=args.get('offset', 0)
             )
             
             if not result.get('success', True):
@@ -292,3 +299,169 @@ class EmailToolHandlers:
         else:
             # No summary, keep all items
             return response + email_list_result
+    
+    @staticmethod
+    def handle_list_unread_folders(args: Dict[str, Any], ctx: ToolContext) -> List[Dict[str, Any]]:
+        """Handle list_unread_folders tool - Return unread count per folder"""
+        try:
+            result = ctx.folder_service.list_folders_with_unread_count(
+                account_id=args.get('account_id'),
+                include_empty=args.get('include_empty', False)
+            )
+            
+            if 'error' in result:
+                return [{
+                    "type": "text",
+                    "text": f"{ctx.get_message('error')}{result['error']}"
+                }]
+            
+            return EmailToolHandlers._format_unread_folders(result, ctx)
+            
+        except Exception as e:
+            logger.error(f"List unread folders failed: {e}")
+            return [{
+                "type": "text",
+                "text": f"{ctx.get_message('operation_failed')}{str(e)}"
+            }]
+    
+    @staticmethod
+    def handle_get_email_headers(args: Dict[str, Any], ctx: ToolContext) -> List[Dict[str, Any]]:
+        """Handle get_email_headers tool - Get only email headers without body"""
+        try:
+            result = ctx.email_service.get_email_headers(
+                email_id=args['email_id'],
+                folder=args.get('folder', 'INBOX'),
+                account_id=args.get('account_id'),
+                headers=args.get('headers')
+            )
+            
+            if 'error' in result:
+                return [{
+                    "type": "text",
+                    "text": f"{ctx.get_message('error')}{result['error']}"
+                }]
+            
+            return EmailToolHandlers._format_email_headers(result, ctx)
+            
+        except Exception as e:
+            logger.error(f"Get email headers failed: {e}")
+            return [{
+                "type": "text",
+                "text": f"{ctx.get_message('operation_failed')}{str(e)}"
+            }]
+    
+    @staticmethod
+    def handle_get_recent_activity(args: Dict[str, Any], ctx: ToolContext) -> List[Dict[str, Any]]:
+        """Handle get_recent_activity tool - Get recent sync/connection activity"""
+        try:
+            result = ctx.system_service.get_recent_activity(
+                account_id=args.get('account_id'),
+                include_stats=args.get('include_stats', True)
+            )
+            
+            if 'error' in result:
+                return [{
+                    "type": "text",
+                    "text": f"{ctx.get_message('error')}{result['error']}"
+                }]
+            
+            return EmailToolHandlers._format_recent_activity(result, ctx)
+            
+        except Exception as e:
+            logger.error(f"Get recent activity failed: {e}")
+            return [{
+                "type": "text",
+                "text": f"{ctx.get_message('operation_failed')}{str(e)}"
+            }]
+    
+    @staticmethod
+    def _format_unread_folders(result: Dict[str, Any], ctx: ToolContext) -> List[Dict[str, Any]]:
+        """Format unread folders result"""
+        folders = result.get('folders', [])
+        
+        if not folders:
+            return [{"type": "text", "text": "No folders found"}]
+        
+        response = []
+        
+        # Summary
+        total_unread = sum(f.get('unread_count', 0) for f in folders)
+        summary = f"📁 Folders with unread emails (Total: {total_unread} unread)\n\n"
+        
+        folder_lines = []
+        for folder in folders:
+            folder_name = folder.get('name', 'Unknown')
+            unread_count = folder.get('unread_count', 0)
+            total_count = folder.get('total_count', 0)
+            account = folder.get('account', 'Unknown')
+            
+            marker = "🔴" if unread_count > 0 else "⚪"
+            folder_lines.append(
+                f"{marker} {folder_name}: {unread_count} unread / {total_count} total ({account})"
+            )
+        
+        response.append({
+            "type": "text",
+            "text": summary + "\n".join(folder_lines)
+        })
+        
+        return response
+    
+    @staticmethod
+    def _format_email_headers(result: Dict[str, Any], ctx: ToolContext) -> List[Dict[str, Any]]:
+        """Format email headers result"""
+        headers = result.get('headers', {})
+        
+        if not headers:
+            return [{"type": "text", "text": "No headers found"}]
+        
+        header_lines = ["📋 Email Headers:\n"]
+        for key, value in headers.items():
+            header_lines.append(f"  {key}: {value}")
+        
+        # Add metadata
+        if 'source' in result:
+            header_lines.append(f"\n  Source: {result['source']}")
+        if 'folder' in result:
+            header_lines.append(f"  Folder: {result['folder']}")
+        if 'account_id' in result:
+            header_lines.append(f"  Account: {result['account_id']}")
+        
+        return [{"type": "text", "text": "\n".join(header_lines)}]
+    
+    @staticmethod
+    def _format_recent_activity(result: Dict[str, Any], ctx: ToolContext) -> List[Dict[str, Any]]:
+        """Format recent activity result"""
+        accounts = result.get('accounts', [])
+        
+        if not accounts:
+            return [{"type": "text", "text": "No recent activity found"}]
+        
+        response = []
+        summary_lines = ["⏱️  Recent Email Activity:\n"]
+        
+        for acc in accounts:
+            account_name = acc.get('account', 'Unknown')
+            last_sync = acc.get('last_sync', 'Never')
+            last_error = acc.get('last_error')
+            success_rate = acc.get('success_rate', 0)
+            
+            status = "✅" if not last_error else "⚠️"
+            summary_lines.append(
+                f"{status} {account_name}:"
+            )
+            summary_lines.append(f"  Last Sync: {last_sync}")
+            
+            if last_error:
+                summary_lines.append(f"  Last Error: {last_error}")
+            
+            if acc.get('include_stats'):
+                summary_lines.append(f"  Success Rate: {success_rate:.1f}%")
+                if 'total_syncs' in acc:
+                    summary_lines.append(f"  Total Syncs: {acc['total_syncs']}")
+            
+            summary_lines.append("")  # Empty line between accounts
+        
+        response.append({"type": "text", "text": "\n".join(summary_lines)})
+        
+        return response

@@ -11,6 +11,11 @@ LIST_EMAILS_SCHEMA = {
             "description": "Maximum number of emails to return (default: 50)",
             "default": 50
         },
+        "offset": {
+            "type": "integer",
+            "description": "Number of emails to skip for pagination (default: 0)",
+            "default": 0
+        },
         "unread_only": {
             "type": "boolean",
             "description": "Only return unread emails (default: true)",
@@ -24,6 +29,11 @@ LIST_EMAILS_SCHEMA = {
         "account_id": {
             "type": "string",
             "description": "Specific account to fetch from (optional)"
+        },
+        "include_metadata": {
+            "type": "boolean",
+            "description": "Include source metadata (cache/fetch) in results (default: true)",
+            "default": True
         }
     }
 }
@@ -69,7 +79,34 @@ MARK_EMAILS_SCHEMA = {
         },
         "account_id": {
             "type": "string",
-            "description": "Specific account ID (required for safety)"
+            "description": "Specific account ID (recommended; required when not using email_accounts)"
+        },
+        "dry_run": {
+            "type": "boolean",
+            "description": "If true, only validate without executing (default: false)",
+            "default": False
+        },
+        "email_accounts": {
+            "type": "array",
+            "description": "Optional per-email account mapping for multi-account operations",
+            "items": {
+                "type": "object",
+                "required": ["email_id", "account_id"],
+                "properties": {
+                    "email_id": {
+                        "type": "string",
+                        "description": "Email ID to operate on"
+                    },
+                    "account_id": {
+                        "type": "string",
+                        "description": "Account ID that owns this email"
+                    },
+                    "folder": {
+                        "type": "string",
+                        "description": "Override folder for this email (optional)"
+                    }
+                }
+            }
         }
     }
 }
@@ -191,7 +228,34 @@ DELETE_EMAILS_SCHEMA = {
         },
         "account_id": {
             "type": "string",
-            "description": "Specific account ID (required for safety)"
+            "description": "Specific account ID (recommended; required when not using email_accounts)"
+        },
+        "dry_run": {
+            "type": "boolean",
+            "description": "If true, only validate without executing (default: false)",
+            "default": False
+        },
+        "email_accounts": {
+            "type": "array",
+            "description": "Optional per-email account mapping for multi-account operations",
+            "items": {
+                "type": "object",
+                "required": ["email_id", "account_id"],
+                "properties": {
+                    "email_id": {
+                        "type": "string",
+                        "description": "Email ID to operate on"
+                    },
+                    "account_id": {
+                        "type": "string",
+                        "description": "Account ID that owns this email"
+                    },
+                    "folder": {
+                        "type": "string",
+                        "description": "Override folder for this email (optional)"
+                    }
+                }
+            }
         }
     }
 }
@@ -235,6 +299,11 @@ SEARCH_EMAILS_SCHEMA = {
             "type": "integer",
             "description": "Maximum results (default: 50)",
             "default": 50
+        },
+        "offset": {
+            "type": "integer",
+            "description": "Number of results to skip for pagination (default: 0)",
+            "default": 0
         },
         "account_id": {
             "type": "string",
@@ -614,6 +683,63 @@ GET_CONTACT_TIMELINE_SCHEMA = {
             "default": 90,
             "minimum": 1,
             "maximum": 365
+        }
+    }
+}
+
+# New atomic tools for granular operations
+
+LIST_UNREAD_FOLDERS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "account_id": {
+            "type": "string",
+            "description": "Get unread counts for specific account (optional, default: all accounts)"
+        },
+        "include_empty": {
+            "type": "boolean",
+            "description": "Include folders with zero unread emails (default: true)",
+            "default": True
+        }
+    }
+}
+
+GET_EMAIL_HEADERS_SCHEMA = {
+    "type": "object",
+    "required": ["email_id"],
+    "properties": {
+        "email_id": {
+            "type": "string",
+            "description": "Email ID to get headers from"
+        },
+        "folder": {
+            "type": "string",
+            "description": "Email folder (default: 'INBOX')",
+            "default": "INBOX"
+        },
+        "account_id": {
+            "type": "string",
+            "description": "Specific account ID (optional)"
+        },
+        "headers": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Specific headers to retrieve (optional, default: common headers like From, To, Subject, Date, Message-ID)"
+        }
+    }
+}
+
+GET_RECENT_ACTIVITY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "account_id": {
+            "type": "string",
+            "description": "Get activity for specific account (optional, default: all accounts)"
+        },
+        "include_stats": {
+            "type": "boolean",
+            "description": "Include detailed statistics (default: true)",
+            "default": True
         }
     }
 }

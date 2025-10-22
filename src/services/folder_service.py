@@ -203,4 +203,87 @@ class FolderService:
         except Exception as e:
             logger.error(f"Get email attachments failed: {e}", exc_info=True)
             return {'error': str(e), 'success': False}
-
+    
+    def list_folders_with_unread_count(
+        self,
+        account_id: Optional[str] = None,
+        include_empty: bool = True
+    ) -> Dict[str, Any]:
+        """
+        List all folders with unread email counts (atomic operation)
+        
+        Args:
+            account_id: Get counts for specific account (optional)
+            include_empty: Include folders with zero unread emails
+            
+        Returns:
+            Dictionary containing folders with unread/total counts
+        """
+        try:
+            from ..connection_manager import ConnectionManager
+            from ..operations.folder_operations import FolderOperations
+            
+            accounts = [account_id] if account_id else None
+            if not accounts:
+                accounts = [acc['id'] for acc in self.account_manager.list_accounts()]
+            
+            all_folders = []
+            
+            for acc_id in accounts:
+                account = self.account_manager.get_account(acc_id)
+                if not account:
+                    continue
+                
+                conn_mgr = ConnectionManager(account)
+                folder_ops = FolderOperations(conn_mgr)
+                
+                # Get folder list
+                folders_result = folder_ops.list_folders()
+                if 'error' in folders_result:
+                    logger.warning(f"Failed to list folders for {acc_id}: {folders_result['error']}")
+                    continue
+                
+                # Connect once for all folders
+                mail = None
+                try:
+                    mail = conn_mgr.connect_imap()
+                    
+                    # Get unread count for each folder
+                    for folder_info in folders_result.get('folders', []):
+                        folder_name = folder_info['name']  # Extract name from dict
+                        try:
+                            mail.select(folder_name, readonly=True)
+                            
+                            # Get UNSEEN count
+                            _, unseen_data = mail.search(None, 'UNSEEN')
+                            unseen_count = len(unseen_data[0].split()) if unseen_data[0] else 0
+                            
+                            # Get total count
+                            _, total_data = mail.search(None, 'ALL')
+                            total_count = len(total_data[0].split()) if total_data[0] else 0
+                            
+                            if include_empty or unseen_count > 0:
+                                all_folders.append({
+                                    'name': folder_name,
+                                    'unread_count': unseen_count,
+                                    'total_count': total_count,
+                                    'account': account.get('email', acc_id),
+                                    'account_id': acc_id
+                                })
+                        except Exception as e:
+                            logger.warning(f"Failed to get counts for folder {folder_name}: {e}")
+                            continue
+                
+                finally:
+                    if mail:
+                        conn_mgr.close_imap(mail)
+            
+            return {
+                'success': True,
+                'folders': all_folders,
+                'total_folders': len(all_folders)
+            }
+            
+        except Exception as e:
+            logger.error(f"List folders with unread count failed: {e}", exc_info=True)
+            return {'error': str(e), 'success': False}

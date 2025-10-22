@@ -81,17 +81,30 @@ class ContactAnalyzer:
                 if recipients_json:
                     try:
                         recipients = json.loads(recipients_json)
-                        if isinstance(recipients, list):
-                            for recipient in recipients:
-                                if recipient:
-                                    recipient_counter[recipient.lower()] += 1
                     except json.JSONDecodeError:
-                        # 如果不是JSON，可能是逗号分隔的字符串
-                        recipients = recipients_json.split(',')
-                        for recipient in recipients:
-                            recipient = recipient.strip()
-                            if recipient:
-                                recipient_counter[recipient.lower()] += 1
+                        recipients = recipients_json
+                    
+                    def _extract_addresses(value) -> List[str]:
+                        """Normalize various recipient structures to plain email strings."""
+                        addresses: List[str] = []
+                        if isinstance(value, str):
+                            addresses.extend([addr.strip() for addr in value.split(',') if addr.strip()])
+                        elif isinstance(value, dict):
+                            # Common structure: {"email": "..."} or {"address": "..."} or grouped by type
+                            email_val = value.get("email") or value.get("address")
+                            if email_val:
+                                addresses.append(email_val.strip())
+                            else:
+                                for nested in value.values():
+                                    addresses.extend(_extract_addresses(nested))
+                        elif isinstance(value, list):
+                            for item in value:
+                                addresses.extend(_extract_addresses(item))
+                        return addresses
+                    
+                    for recipient in _extract_addresses(recipients):
+                        if recipient:
+                            recipient_counter[recipient.lower()] += 1
             
             # 准备结果
             result = {
@@ -262,4 +275,3 @@ def get_contact_timeline(
     """
     analyzer = ContactAnalyzer()
     return analyzer.get_contact_timeline(contact_email, account_id, days)
-

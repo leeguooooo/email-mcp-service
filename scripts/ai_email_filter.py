@@ -70,14 +70,32 @@ class AIEmailFilter:
             "filter_rules": {
                 "high_priority_senders": [],  # 高优先级发件人
                 "high_priority_keywords": ["urgent", "important", "asap", "紧急", "重要"],
-                "low_priority_keywords": ["newsletter", "promotion", "unsubscribe", "广告", "推广"],
-                "spam_indicators": ["lottery", "winner", "congratulations", "中奖", "恭喜"]
+                "low_priority_keywords": [
+                    "newsletter", "promotion", "unsubscribe", "newsletter", "digest",
+                    "update", "广告", "推广", "周报", "快讯", "提醒", "通知"
+                ],
+                "marketing_keywords": [
+                    "sale", "discount", "coupon", "限时", "福利", "活动", "周年庆",
+                    "营销", "促销", "推广", "限时优惠", "双11", "618", "黑五", "clearance"
+                ],
+                "system_keywords": [
+                    "alert", "notification", "system", "login", "安全", "登录",
+                    "warning", "reminder", "账单", "payment due", "容量", "quota"
+                ],
+                "spam_indicators": [
+                    "lottery", "winner", "congratulations", "中奖", "恭喜", "bitcoin",
+                    "crypto", "免费", "loan", "借款", "fast cash", "点击链接", "财富自由"
+                ]
             },
             "categories": {
                 "work": ["meeting", "project", "deadline", "会议", "项目", "截止"],
                 "personal": ["family", "friend", "birthday", "家人", "朋友", "生日"],
                 "finance": ["invoice", "payment", "bank", "发票", "付款", "银行"],
-                "urgent": ["urgent", "emergency", "asap", "紧急", "急"]
+                "urgent": ["urgent", "emergency", "asap", "紧急", "急"],
+                "marketing": ["sale", "promotion", "优惠", "活动", "营销", "促销"],
+                "newsletter": ["newsletter", "digest", "update", "周报", "月报", "周刊"],
+                "system": ["alert", "notification", "系统", "登录", "安全", "提醒"],
+                "spam": ["spam", "lottery", "中奖", "免费", "借款", "赌博"]
             }
         }
         
@@ -158,8 +176,8 @@ class AIEmailFilter:
     "is_important": true/false,
     "priority_score": 0.0-1.0,
     "reason": "判断理由",
-    "category": "{'/'.join(categories)}中的一个或general",
-    "suggested_action": "reply/forward/archive/none"
+    "category": "{'/'.join(categories)} 中的一个或 general",
+    "suggested_action": "delete/archive/mark_read/reply/follow_up"
 }}
 
 重要邮件的特征：
@@ -174,6 +192,12 @@ class AIEmailFilter:
 - 新闻订阅
 - 自动通知
 - 垃圾邮件
+
+分类提示：
+- 明显垃圾或诈骗信息标记为 "spam"，建议操作为 delete
+- 营销推广内容标记为 "marketing"，建议操作通常为 delete
+- 周报、资讯类更新标记为 "newsletter"，建议操作通常为 mark_read
+- 系统提醒或安全通知标记为 "system"，根据风险评估 is_important
 
 请仅返回 JSON，不要包含其他内容。
 """
@@ -271,7 +295,34 @@ class AIEmailFilter:
                     is_important=False,
                     priority_score=0.1,
                     reason=f"包含垃圾邮件指标: {indicator}",
-                    category="spam"
+                    category="spam",
+                    suggested_action="delete"
+                )
+        
+        # 检查营销关键词
+        marketing_keywords = rules.get("marketing_keywords", [])
+        for keyword in marketing_keywords:
+            if keyword.lower() in text_to_check:
+                return FilterResult(
+                    email_id=email.email_id,
+                    is_important=False,
+                    priority_score=0.2,
+                    reason=f"识别为营销推广内容: {keyword}",
+                    category="marketing",
+                    suggested_action="delete"
+                )
+        
+        # 检查系统通知关键词
+        system_keywords = rules.get("system_keywords", [])
+        for keyword in system_keywords:
+            if keyword.lower() in text_to_check:
+                return FilterResult(
+                    email_id=email.email_id,
+                    is_important=False,
+                    priority_score=0.4,
+                    reason=f"识别为系统/例行通知: {keyword}",
+                    category="system",
+                    suggested_action="mark_read"
                 )
         
         # 检查高优先级关键词
@@ -284,6 +335,19 @@ class AIEmailFilter:
                     priority_score=0.8,
                     reason=f"包含高优先级关键词: {keyword}",
                     category="urgent"
+                )
+        
+        # 检查低优先级关键词（例如 newsletter）
+        low_priority_keywords = rules.get("low_priority_keywords", [])
+        for keyword in low_priority_keywords:
+            if keyword.lower() in text_to_check:
+                return FilterResult(
+                    email_id=email.email_id,
+                    is_important=False,
+                    priority_score=0.3,
+                    reason=f"匹配低优先级关键词: {keyword}",
+                    category="newsletter",
+                    suggested_action="mark_read"
                 )
         
         return None

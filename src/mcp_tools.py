@@ -26,7 +26,10 @@ from .core.tool_schemas import (
     CHECK_CONNECTION_SCHEMA,
     LIST_ACCOUNTS_SCHEMA,
     ANALYZE_CONTACTS_SCHEMA,
-    GET_CONTACT_TIMELINE_SCHEMA
+    GET_CONTACT_TIMELINE_SCHEMA,
+    LIST_UNREAD_FOLDERS_SCHEMA,
+    GET_EMAIL_HEADERS_SCHEMA,
+    GET_RECENT_ACTIVITY_SCHEMA
 )
 from .core.tool_handlers import ToolContext, EmailToolHandlers
 from .core.communication_handlers import CommunicationHandlers
@@ -98,31 +101,31 @@ class MCPTools:
         # Email tools
         tool_registry.register(
             "list_emails",
-            "List emails from inbox (supports multi-account). Returns newest emails first. For unread emails, automatically checks multiple folders.",
+            "List emails from inbox (supports multi-account). UIDs are scoped to each account—pass account_id for deterministic follow-up actions. Performs live IMAP fetch; failures usually indicate network or credential issues.",
             LIST_EMAILS_SCHEMA
         )(EmailToolHandlers.handle_list_emails)
         
         tool_registry.register(
             "get_email_detail",
-            "Get detailed content of a specific email including body and attachments",
+            "Get detailed content of a specific email including body and attachments. Requires IMAP connectivity to download the latest message content.",
             GET_EMAIL_DETAIL_SCHEMA
         )(EmailToolHandlers.handle_get_email_detail)
         
         tool_registry.register(
             "mark_emails",
-            "Mark one or more emails as read or unread",
+            "Mark one or more emails as read or unread. Pass account_id when operating within a single account, or provide email_accounts mapping for mixed-account batches.",
             MARK_EMAILS_SCHEMA
         )(EmailToolHandlers.handle_mark_emails)
         
         tool_registry.register(
             "mark_email_read",
-            "Mark a single email as read",
+            "Mark a single email as read (account_id optional but recommended to avoid cross-account lookup).",
             MARK_EMAIL_READ_SCHEMA
         )(make_single_mark_handler("read"))
         
         tool_registry.register(
             "mark_email_unread",
-            "Mark a single email as unread",
+            "Mark a single email as unread (account_id optional but recommended).",
             MARK_EMAIL_UNREAD_SCHEMA
         )(make_single_mark_handler("unread"))
         
@@ -134,13 +137,13 @@ class MCPTools:
         
         tool_registry.register(
             "delete_emails",
-            "Delete one or more emails (move to trash or permanently delete)",
+            "Delete one or more emails (move to trash or permanently delete). Provide account_id or email_accounts mapping so each UID can be routed to the right mailbox.",
             DELETE_EMAILS_SCHEMA
         )(EmailToolHandlers.handle_delete_emails)
         
         tool_registry.register(
             "delete_email",
-            "Delete a single email (move to trash or permanently delete)",
+            "Delete a single email (move to trash or permanently delete). account_id optional but recommended.",
             DELETE_EMAIL_SCHEMA
         )(delete_single_handler)
         
@@ -152,71 +155,90 @@ class MCPTools:
         
         tool_registry.register(
             "search_emails",
-            "Search emails with various criteria across all accounts or specific account",
+            "Search emails with various criteria across all accounts or specific account. Returned UIDs must be used with the same account; specify account_id for precise targeting.",
             SEARCH_EMAILS_SCHEMA
         )(EmailToolHandlers.handle_search_emails)
         
         # Communication tools
         tool_registry.register(
             "send_email",
-            "Send a new email with optional attachments",
+            "Send a new email with optional attachments via SMTP. Ensure the account has SMTP server configuration and valid credentials.",
             SEND_EMAIL_SCHEMA
         )(CommunicationHandlers.handle_send_email)
         
         tool_registry.register(
             "reply_email",
-            "Reply to an email (preserves thread)",
+            "Reply to an email (preserves thread). Requires SMTP access for the originating account.",
             REPLY_EMAIL_SCHEMA
         )(CommunicationHandlers.handle_reply_email)
         
         tool_registry.register(
             "forward_email",
-            "Forward an email to other recipients",
+            "Forward an email to other recipients using SMTP credentials of the selected account.",
             FORWARD_EMAIL_SCHEMA
         )(CommunicationHandlers.handle_forward_email)
         
         # Organization tools
         tool_registry.register(
             "list_folders",
-            "List all email folders/labels in the account",
+            "List all email folders/labels in the account (IMAP). Provide account_id to target a specific mailbox.",
             LIST_FOLDERS_SCHEMA
         )(OrganizationHandlers.handle_list_folders)
         
         tool_registry.register(
             "move_emails_to_folder",
-            "Move emails to a different folder",
+            "Move emails to a different folder. Requires IMAP access; pass account_id (or use per-email mapping in mark/delete first) so UIDs match the correct account.",
             MOVE_EMAILS_TO_FOLDER_SCHEMA
         )(OrganizationHandlers.handle_move_emails_to_folder)
         
         tool_registry.register(
             "flag_email",
-            "Flag/star or unflag an email",
+            "Flag/star or unflag an email. Runs against the live mailbox—account_id recommended to avoid cross-account lookups.",
             FLAG_EMAIL_SCHEMA
         )(OrganizationHandlers.handle_flag_email)
         
         tool_registry.register(
             "get_email_attachments",
-            "Extract attachments from an email",
+            "Extract attachments from an email by downloading them over IMAP. Requires a reachable mailbox and may incur network latency.",
             GET_EMAIL_ATTACHMENTS_SCHEMA
         )(OrganizationHandlers.handle_get_email_attachments)
         
         # Contact Analysis tools
         tool_registry.register(
             "analyze_contacts",
-            "Analyze contact frequency and communication patterns. Returns top senders/recipients based on email history.",
+            "Analyze contact frequency and communication patterns using the local sync database. Works only after emails have been synchronized to the cache.",
             ANALYZE_CONTACTS_SCHEMA
         )(OrganizationHandlers.handle_analyze_contacts)
         
         tool_registry.register(
             "get_contact_timeline",
-            "Get communication timeline with a specific contact, showing all sent and received emails.",
+            "Get communication timeline with a specific contact from the local sync cache (no live IMAP).",
             GET_CONTACT_TIMELINE_SCHEMA
         )(OrganizationHandlers.handle_get_contact_timeline)
+        
+        # New atomic tools for granular operations
+        tool_registry.register(
+            "list_unread_folders",
+            "List folders with unread counts per configured account. Requires live IMAP connectivity; returns empty list when the mailbox cannot be reached.",
+            LIST_UNREAD_FOLDERS_SCHEMA
+        )(EmailToolHandlers.handle_list_unread_folders)
+        
+        tool_registry.register(
+            "get_email_headers",
+            "Fetch only email headers (From, To, Subject, Date, Message-ID, etc.) without downloading the body. account_id recommended so the UID lookup hits the right mailbox.",
+            GET_EMAIL_HEADERS_SCHEMA
+        )(EmailToolHandlers.handle_get_email_headers)
+        
+        tool_registry.register(
+            "get_recent_activity",
+            "Return recent sync activity/health per account based on local cache data.",
+            GET_RECENT_ACTIVITY_SCHEMA
+        )(EmailToolHandlers.handle_get_recent_activity)
         
         # System tools
         tool_registry.register(
             "check_connection",
-            "Test email server connections (IMAP and SMTP) for all configured accounts",
+            "Test email server connections (IMAP and SMTP) for all configured accounts using stored credentials.",
             CHECK_CONNECTION_SCHEMA
         )(SystemHandlers.handle_check_connection)
         
@@ -233,26 +255,26 @@ class MCPTools:
             
             tool_registry.register(
                 "sync_emails",
-                "Unified email synchronization tool: start/stop scheduler, force sync, get status, search cache, manage config (action: start|stop|force|status|search|recent|config)",
+                "Unified email synchronization tool: start/stop scheduler, force sync, get status, search cache, manage config (action: start|stop|force|status|search|recent|config). Operates on the local sync service and databases.",
                 SYNC_EMAILS_SCHEMA
             )(SyncHandlers.handle_sync_emails)
             
             # Sync health monitoring tools
             tool_registry.register(
                 "get_sync_health",
-                "Get sync health status for all accounts or a specific account, including health score, success rate, and failure history",
+                "Get sync health status for all accounts or a specific account based on cached sync metrics (no live IMAP).",
                 GET_SYNC_HEALTH_SCHEMA
             )(SyncHandlers.handle_get_sync_health)
             
             tool_registry.register(
                 "get_sync_history",
-                "Get synchronization history for all accounts or a specific account within specified hours",
+                "Get synchronization history for all accounts or a specific account within specified hours from the local sync logs.",
                 GET_SYNC_HISTORY_SCHEMA
             )(SyncHandlers.handle_get_sync_history)
             
             tool_registry.register(
                 "get_connection_pool_stats",
-                "Get IMAP connection pool statistics including connection reuse rate and active connections",
+                "Get IMAP connection pool statistics from the local sync service, including connection reuse rate and active connections (no remote calls).",
                 GET_CONNECTION_POOL_STATS_SCHEMA
             )(SyncHandlers.handle_get_connection_pool_stats)
         except (ModuleNotFoundError, ImportError) as exc:

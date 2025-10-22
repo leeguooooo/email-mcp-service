@@ -7,7 +7,7 @@ import sys
 import os
 import json
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 # 添加项目根目录到 Python 路径
 repo_root = Path(__file__).resolve().parents[1]
@@ -171,6 +171,51 @@ async def test_notification():
             }
         }
     }
+
+
+@app.post("/api/organize-inbox", dependencies=[Depends(verify_api_key)])
+async def organize_inbox(
+    limit: int = 15,
+    unread_only: bool = False,
+    folder: str = "INBOX",
+    account_id: Optional[str] = None,
+):
+    """
+    对最近的邮件进行整理分析，返回分类与摘要建议。
+
+    Query 参数:
+        limit: 分析的邮件数量
+        unread_only: 是否仅分析未读邮件
+        folder: 邮件文件夹（默认 INBOX）
+        account_id: 指定账号 ID 或邮箱地址
+    """
+    try:
+        logger.info(
+            "开始整理邮件: limit=%s unread_only=%s folder=%s account_id=%s",
+            limit,
+            unread_only,
+            folder,
+            account_id,
+        )
+
+        from scripts.inbox_organizer import InboxOrganizer
+
+        organizer = InboxOrganizer(
+            limit=limit,
+            folder=folder,
+            unread_only=unread_only,
+            account_id=account_id,
+        )
+        result = await asyncio.to_thread(organizer.organize)
+
+        return JSONResponse(content=result, status_code=200)
+
+    except Exception as e:
+        logger.error("整理邮件时发生错误: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"整理邮件失败: {str(e)}"
+        )
 
 
 @app.post("/api/translate-unread", dependencies=[Depends(verify_api_key)])
@@ -355,4 +400,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
