@@ -172,6 +172,13 @@ sync_emails with action="stop"
 
 项目新增 `clients/mailbox_client` 子目录，提供独立的命令行界面，可以在不启动 MCP 客户端的情况下浏览所有已配置邮箱的邮件：
 
+### 🎯 交互式模式（推荐新手）
+```bash
+# 启动交互式模式（类似 setup.py）
+uv run python -m clients.mailbox_client
+```
+
+### 📋 命令行模式（适合脚本）
 ```bash
 uv run python -m clients.mailbox_client list-accounts
 uv run python -m clients.mailbox_client list-emails --limit 20

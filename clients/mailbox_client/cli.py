@@ -17,7 +17,18 @@ def build_parser() -> argparse.ArgumentParser:
         description="轻量级邮箱浏览客户端，访问 MCP 邮件服务中的所有账户",
     )
 
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(dest="command", required=False)
+    
+    # 交互式模式
+    interactive_parser = subparsers.add_parser(
+        "interactive",
+        help="启动交互式模式（推荐新手使用）",
+    )
+    interactive_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="以 JSON 格式输出结果",
+    )
 
     # list-accounts
     list_accounts_parser = subparsers.add_parser(
@@ -93,7 +104,14 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    # 如果没有提供命令，启动交互式模式
+    if args.command is None:
+        return _interactive_mode()
+
     client = MailboxClient()
+
+    if args.command == "interactive":
+        return _interactive_mode(args.json)
 
     if args.command == "list-accounts":
         result = client.list_accounts()
@@ -245,6 +263,118 @@ def _shorten(value: Any, width: int) -> str:
     if width <= 1:
         return text[:width]
     return text[: width - 1] + "…"
+
+
+def _interactive_mode(use_json: bool = False) -> int:
+    """交互式模式 - 类似 setup.py 的菜单界面"""
+    client = MailboxClient()
+    
+    while True:
+        print("\n" + "=" * 50)
+        print("📧 MCP 邮箱浏览客户端 - 交互式模式")
+        print("=" * 50)
+        print("请选择操作:")
+        print("1. 查看所有账户")
+        print("2. 查看邮件列表")
+        print("3. 查看未读邮件")
+        print("4. 查看单封邮件详情")
+        print("5. 查看指定账户的邮件")
+        print("0. 退出")
+        
+        choice = input("\n请选择 (0-5): ").strip()
+        
+        if choice == "0":
+            print("\n👋 再见！")
+            break
+        elif choice == "1":
+            result = client.list_accounts()
+            _handle_output(result, use_json, _print_accounts)
+        elif choice == "2":
+            limit = _get_limit()
+            result = client.list_emails(limit=limit)
+            _handle_output(result, use_json, _print_emails)
+        elif choice == "3":
+            limit = _get_limit()
+            result = client.list_emails(limit=limit, unread_only=True)
+            _handle_output(result, use_json, _print_emails)
+        elif choice == "4":
+            _show_email_detail_interactive(client, use_json)
+        elif choice == "5":
+            _show_account_emails_interactive(client, use_json)
+        else:
+            print("❌ 无效的选择，请重试")
+        
+        if choice in ["1", "2", "3", "4", "5"]:
+            input("\n按回车键继续...")
+    
+    return 0
+
+
+def _get_limit() -> int:
+    """获取邮件数量限制"""
+    while True:
+        try:
+            limit_str = input("显示多少封邮件? (默认20): ").strip()
+            if not limit_str:
+                return 20
+            limit = int(limit_str)
+            if limit > 0:
+                return limit
+            else:
+                print("❌ 请输入大于0的数字")
+        except ValueError:
+            print("❌ 请输入有效的数字")
+
+
+def _show_email_detail_interactive(client: MailboxClient, use_json: bool) -> None:
+    """交互式查看邮件详情"""
+    email_id = input("请输入邮件UID: ").strip()
+    if not email_id:
+        print("❌ 邮件UID不能为空")
+        return
+    
+    account_id = input("请输入账户ID (可选): ").strip() or None
+    
+    result = client.get_email_detail(email_id, account_id=account_id)
+    _handle_output(result, use_json, _print_email_detail)
+
+
+def _show_account_emails_interactive(client: MailboxClient, use_json: bool) -> None:
+    """交互式查看指定账户的邮件"""
+    # 先显示账户列表
+    accounts_result = client.list_accounts()
+    if not accounts_result.get("success"):
+        print("❌ 无法获取账户列表")
+        return
+    
+    accounts = accounts_result.get("accounts", [])
+    if not accounts:
+        print("📭 没有配置任何账户")
+        return
+    
+    print("\n📬 可用账户:")
+    for i, account in enumerate(accounts, 1):
+        print(f"{i}. {account.get('id', '')} - {account.get('email', '')}")
+    
+    try:
+        choice = int(input("\n请选择账户 (输入数字): ").strip())
+        if 1 <= choice <= len(accounts):
+            selected_account = accounts[choice - 1]
+            account_id = selected_account.get("id")
+            
+            limit = _get_limit()
+            unread_only = input("只显示未读邮件? (y/n): ").strip().lower() == 'y'
+            
+            result = client.list_emails(
+                limit=limit,
+                unread_only=unread_only,
+                account_id=account_id
+            )
+            _handle_output(result, use_json, _print_emails)
+        else:
+            print("❌ 无效的选择")
+    except ValueError:
+        print("❌ 请输入有效的数字")
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -197,6 +197,13 @@ python scripts/email_monitor.py status
 
 A standalone CLI lives under `clients/mailbox_client`, allowing you to browse emails across all configured accounts without launching an MCP client.
 
+### Interactive Mode (Recommended for beginners)
+```bash
+# Start interactive mode (like setup.py)
+uv run python -m clients.mailbox_client
+```
+
+### Command-line Mode (For scripting)
 ```bash
 uv run python -m clients.mailbox_client list-accounts
 uv run python -m clients.mailbox_client list-emails --limit 20
