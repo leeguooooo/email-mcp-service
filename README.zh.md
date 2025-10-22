@@ -168,6 +168,18 @@ sync_emails with action="stop"
 - 完全同步：每天凌晨2点进行完整同步
 - 离线浏览：同步后的邮件可离线查看和搜索
 
+## 命令行邮箱客户端（新）
+
+项目新增 `clients/mailbox_client` 子目录，提供独立的命令行界面，可以在不启动 MCP 客户端的情况下浏览所有已配置邮箱的邮件：
+
+```bash
+uv run python -m clients.mailbox_client list-accounts
+uv run python -m clients.mailbox_client list-emails --limit 20
+uv run python -m clients.mailbox_client show-email 123456 --account-id my_account
+```
+
+命令均支持 `--json` 参数输出原始数据，便于与脚本或自动化平台集成。详细使用说明请参阅 [clients/mailbox_client/README.md](clients/mailbox_client/README.md)。
+
 ## 常见问题
 
 1. **登录失败**：163/QQ邮箱使用授权码，Gmail使用应用密码
@@ -197,6 +209,8 @@ mcp-email-service/
 ├── scripts/                   # 实用脚本
 ├── n8n/                      # n8n 工作流模板
 ├── config_templates/         # 配置示例
+├── clients/                  # 客户端示例与工具
+│   └── mailbox_client/       # 命令行邮箱浏览客户端
 └── accounts.json             # 邮箱账户配置（用户创建）
 ```
 
