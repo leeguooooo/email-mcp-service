@@ -193,6 +193,18 @@ python scripts/email_monitor.py run
 python scripts/email_monitor.py status
 ```
 
+## Command-line Mailbox Client
+
+A standalone CLI lives under `clients/mailbox_client`, allowing you to browse emails across all configured accounts without launching an MCP client.
+
+```bash
+uv run python -m clients.mailbox_client list-accounts
+uv run python -m clients.mailbox_client list-emails --limit 20
+uv run python -m clients.mailbox_client show-email 123456 --account-id my_account
+```
+
+Each command accepts `--json` for machine-readable output. See [clients/mailbox_client/README.md](clients/mailbox_client/README.md) for more details.
+
 #### Supported Notification Platforms
 - **Feishu/Lark** - Rich card notifications with interactive elements
 - **DingTalk** - Markdown formatted messages with @mentions
@@ -252,6 +264,8 @@ mcp-email-service/
 ├── scripts/                   # Utility scripts
 ├── n8n/                      # n8n workflow templates
 ├── config_templates/         # Configuration examples
+├── clients/                  # Standalone clients and tooling
+│   └── mailbox_client/       # Command-line mailbox browser
 └── accounts.json             # Email account configuration (user-created)
 ```
 
