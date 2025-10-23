@@ -108,8 +108,8 @@ def start_background_sync():
     try:
         logger.info("启动后台自动同步...")
         
-        from background.sync_scheduler import start_background_sync
-        scheduler = start_background_sync()
+        from src.background.sync_scheduler import start_background_sync as scheduler_start_background_sync
+        scheduler = scheduler_start_background_sync()
         
         logger.info("✅ 后台同步已启动")
         logger.info("   - 增量同步: 每15分钟")

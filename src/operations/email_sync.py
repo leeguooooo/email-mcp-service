@@ -166,9 +166,11 @@ class EmailSyncManager:
                         folder_errors.append((folder_name, str(e)))
                         continue
                 
+                # 记录文件夹错误，但不中断整个账户同步
                 if folder_errors:
                     error_details = ", ".join(f"{name}: {err}" for name, err in folder_errors[:3])
-                    raise RuntimeError(f"Folder sync failures detected ({len(folder_errors)} folders). Sample: {error_details}")
+                    logger.warning(f"Some folders failed to sync ({len(folder_errors)} folders). Sample: {error_details}")
+                    # 不抛出异常，让账户同步继续完成
                 
                 # 更新账户同步状态
                 self._update_account_sync_status(account_id, 'completed', total_added + total_updated)
@@ -239,7 +241,8 @@ class EmailSyncManager:
                 'Sent Messages',  # QQ邮箱的伪文件夹
                 'Deleted Messages',  # QQ邮箱的伪文件夹
                 'Drafts',  # 某些邮箱的草稿箱可能无法访问
-                'Junk'  # 垃圾邮件箱可能无法访问
+                'Junk',  # 垃圾邮件箱可能无法访问
+                'NAS &W5pl9k77UqE-'  # 163邮箱的问题文件夹，EXAMINE 命令错误
             }
             folder_names = [f for f in folder_names if f not in excluded_folders]
             

@@ -10,6 +10,31 @@
 
 > **新功能**：邮件翻译与总结 - 自动翻译非中文邮件，生成摘要，并发送到飞书！
 
+## 新功能：n8n + AI 邮件监控
+
+**自动监控邮件，使用 AI 智能筛选重要邮件，并实时通知到团队群聊！**
+
+- **AI 智能筛选**：使用 OpenAI/Claude 智能识别重要邮件
+- **多平台通知**：支持飞书/钉钉/企业微信/Slack
+- **自动化监控**：n8n 工作流每 5 分钟自动运行
+- **去重机制**：防止重复通知
+- **生产就绪**：完善的错误处理和回退机制
+
+```bash
+# 1. 设置监控系统
+python scripts/setup_n8n_monitoring.py
+
+# 2. 配置环境变量
+export FEISHU_WEBHOOK="your_webhook_url"
+export OPENAI_API_KEY="your_api_key"  # AI 筛选可选
+
+# 3. 导入 n8n 工作流
+# 在你的 n8n 实例中导入 n8n/email_monitoring_workflow.json
+
+# 4. 开始监控！
+# 系统将每 5 分钟自动检查邮件
+```
+
 ## 支持的邮箱
 
 - **163邮箱** (mail.163.com / mail.126.com)
@@ -20,23 +45,31 @@
 
 ## 快速开始
 
-### 1. 安装
+### 选项 1：通过 Smithery 安装（推荐）
+
+```bash
+# 在 Smithery 中搜索 "email-mcp-service" 并安装
+# 或使用命令行
+smithery install email-mcp-service
+```
+
+### 选项 2：手动安装
 
 需要 Python 3.11+ 和 [UV](https://github.com/astral-sh/uv)。
 
 ```bash
 git clone https://github.com/leeguooooo/email-mcp-service.git
-cd mcp-email-service
+cd email-mcp-service
 uv sync
 ```
 
-### 2. 配置邮箱
+### 3. 配置邮箱
 
 ```bash
 uv run python setup.py
 ```
 
-### 3. 初始化数据库和同步
+### 4. 初始化数据库和同步
 
 ```bash
 # 交互式模式（推荐新手）
@@ -297,11 +330,11 @@ mcp-email-service/
 ### 运行测试
 ```bash
 # 运行所有测试
-python3 -m unittest discover tests/
+uv run pytest
 
 # 查看测试覆盖率
-python3 -m coverage run -m unittest discover tests/
-python3 -m coverage report
+uv run coverage run -m pytest
+uv run coverage report
 ```
 
 ## 许可证

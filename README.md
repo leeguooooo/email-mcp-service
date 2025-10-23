@@ -78,8 +78,8 @@ uv sync
 uv run python setup.py
 
 # Or manually copy example config
-cp examples/accounts.example.json accounts.json
-# Then edit accounts.json with your email settings
+cp examples/accounts.example.json data/accounts.json
+# Then edit data/accounts.json with your email settings
 ```
 
 #### Email Configuration Guide
