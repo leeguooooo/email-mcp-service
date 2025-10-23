@@ -106,7 +106,29 @@ If you installed manually, add to your MCP client (e.g., Claude Desktop) config:
 }
 ```
 
+### 4. How to Use MCP Commands
+
+After configuration, you can use email features directly in MCP clients (like Claude Desktop):
+
+1. **Start MCP Client**: Ensure the MCP service is properly configured and running
+2. **Use in Conversations**: Request email operations directly in conversations, for example:
+   - "Show me unread emails"
+   - "Search for emails containing 'meeting'"
+   - "Mark email 123 as read"
+   - "Send email to user@example.com"
+
+3. **Command-line Client**: If you prefer not to use MCP clients, you can use the command-line client:
+   ```bash
+   # Interactive mode
+   uv run python -m clients.mailbox_client
+   
+   # Command-line mode
+   uv run python -m clients.mailbox_client list-emails --limit 10
+   ```
+
 ## Main Features
+
+> **Note**: The following commands are used within MCP clients (like Claude Desktop), not as command-line commands.
 
 ### View Emails
 ```bash

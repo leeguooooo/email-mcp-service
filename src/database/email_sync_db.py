@@ -4,6 +4,7 @@ SQLite数据库同步模块 - 多邮箱邮件同步
 import sqlite3
 import logging
 import hashlib
+import threading
 from typing import Dict, Any, List, Optional, Tuple
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -25,6 +26,7 @@ class EmailSyncDatabase:
             db_path = EMAIL_SYNC_DB
         self.db_path = Path(db_path)
         self.conn = None
+        self._lock = threading.RLock()  # 添加线程锁
         self._initialize_database()
     
     def _initialize_database(self):
@@ -180,135 +182,172 @@ class EmailSyncDatabase:
     
     def add_or_update_account(self, account_id: str, email: str, provider: str) -> bool:
         """添加或更新账户信息"""
-        try:
-            self.conn.execute("""
-                INSERT OR REPLACE INTO accounts (id, email, provider, updated_at)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-            """, (account_id, email, provider))
-            self.conn.commit()
-            return True
-        except sqlite3.Error as e:
-            logger.error(f"Failed to add/update account {account_id}: {e}")
-            return False
+        with self._lock:
+            try:
+                self.conn.execute("""
+                    INSERT OR REPLACE INTO accounts (id, email, provider, updated_at)
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                """, (account_id, email, provider))
+                self.conn.commit()
+                return True
+            except sqlite3.Error as e:
+                logger.error(f"Failed to add/update account {account_id}: {e}")
+                return False
     
     def add_or_update_folder(self, account_id: str, folder_name: str, 
                            display_name: str = None, message_count: int = 0, 
                            unread_count: int = 0) -> int:
         """添加或更新文件夹，返回文件夹ID"""
-        try:
-            cursor = self.conn.execute("""
-                INSERT OR REPLACE INTO folders 
-                (account_id, name, display_name, message_count, unread_count, last_sync)
-                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """, (account_id, folder_name, display_name or folder_name, 
-                  message_count, unread_count))
-            
-            self.conn.commit()
-            
-            # 获取文件夹ID
-            result = self.conn.execute("""
-                SELECT id FROM folders WHERE account_id = ? AND name = ?
-            """, (account_id, folder_name)).fetchone()
-            
-            return result['id'] if result else None
-            
-        except sqlite3.Error as e:
-            logger.error(f"Failed to add/update folder {folder_name}: {e}")
-            return None
+        with self._lock:
+            try:
+                cursor = self.conn.execute("""
+                    INSERT OR REPLACE INTO folders 
+                    (account_id, name, display_name, message_count, unread_count, last_sync)
+                    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, (account_id, folder_name, display_name or folder_name, 
+                      message_count, unread_count))
+                
+                self.conn.commit()
+                
+                # 获取文件夹ID
+                result = self.conn.execute("""
+                    SELECT id FROM folders WHERE account_id = ? AND name = ?
+                """, (account_id, folder_name)).fetchone()
+                
+                return result['id'] if result else None
+                
+            except sqlite3.Error as e:
+                logger.error(f"Failed to add/update folder {folder_name}: {e}")
+                return None
     
     def add_or_update_email(self, email_data: Dict[str, Any]) -> Tuple[int, bool]:
         """
         添加或更新邮件
         返回: (email_id, is_new)
         """
-        try:
-            # 检查邮件是否已存在
-            existing = self.conn.execute("""
-                SELECT id, content_hash FROM emails 
-                WHERE account_id = ? AND folder_id = ? AND uid = ?
-            """, (email_data['account_id'], email_data['folder_id'], email_data['uid'])).fetchone()
-            
-            # 计算内容hash用于去重
-            content_hash = self._calculate_content_hash(email_data)
-            
-            if existing:
-                email_id = existing['id']
-                # 如果内容没有变化，只更新时间戳
-                if existing['content_hash'] == content_hash:
-                    self.conn.execute("""
-                        UPDATE emails SET updated_at = CURRENT_TIMESTAMP 
-                        WHERE id = ?
-                    """, (email_id,))
-                    self.conn.commit()
-                    return email_id, False
-                else:
-                    # 内容有变化，更新邮件
-                    self._update_email(email_id, email_data, content_hash)
-                    return email_id, False
-            else:
-                # 新邮件，插入
-                email_id = self._insert_email(email_data, content_hash)
-                return email_id, True
+        with self._lock:
+            try:
+                # 检查邮件是否已存在
+                existing = self.conn.execute("""
+                    SELECT id, content_hash FROM emails 
+                    WHERE account_id = ? AND folder_id = ? AND uid = ?
+                """, (email_data['account_id'], email_data['folder_id'], email_data['uid'])).fetchone()
                 
-        except sqlite3.Error as e:
-            logger.error(f"Failed to add/update email: {e}")
-            return None, False
+                # 计算内容hash用于去重
+                content_hash = self._calculate_content_hash(email_data)
+                
+                if existing:
+                    email_id = existing['id']
+                    # 如果内容没有变化，只更新时间戳
+                    if existing['content_hash'] == content_hash:
+                        self.conn.execute("""
+                            UPDATE emails SET updated_at = CURRENT_TIMESTAMP 
+                            WHERE id = ?
+                        """, (email_id,))
+                        self.conn.commit()
+                        return email_id, False
+                    else:
+                        # 内容有变化，更新邮件
+                        self._update_email(email_id, email_data, content_hash)
+                        return email_id, False
+                else:
+                    # 新邮件，插入
+                    email_id = self._insert_email(email_data, content_hash)
+                    return email_id, True
+                    
+            except sqlite3.Error as e:
+                logger.error(f"Failed to add/update email: {e}")
+                return None, False
     
     def _insert_email(self, email_data: Dict[str, Any], content_hash: str) -> int:
         """插入新邮件"""
-        cursor = self.conn.execute("""
-            INSERT INTO emails (
-                account_id, folder_id, uid, message_id, subject, sender, sender_email,
-                recipients, date_sent, is_read, is_flagged, has_attachments,
-                size_bytes, content_hash, sync_status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced')
-        """, (
-            email_data['account_id'],
-            email_data['folder_id'],
-            email_data['uid'],
-            email_data.get('message_id'),
-            email_data.get('subject'),
-            email_data.get('sender'),
-            email_data.get('sender_email'),
-            json.dumps(email_data.get('recipients', [])),
-            email_data.get('date_sent'),
-            email_data.get('is_read', False),
-            email_data.get('is_flagged', False),
-            email_data.get('has_attachments', False),
-            email_data.get('size_bytes', 0),
-            content_hash
-        ))
-        
-        self.conn.commit()
-        return cursor.lastrowid
+        with self._lock:
+            cursor = self.conn.execute("""
+                INSERT INTO emails (
+                    account_id, folder_id, uid, message_id, subject, sender, sender_email,
+                    recipients, date_sent, is_read, is_flagged, has_attachments,
+                    size_bytes, content_hash, sync_status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced')
+            """, (
+                email_data['account_id'],
+                email_data['folder_id'],
+                email_data['uid'],
+                email_data.get('message_id'),
+                email_data.get('subject'),
+                email_data.get('sender'),
+                email_data.get('sender_email'),
+                json.dumps(email_data.get('recipients', [])),
+                email_data.get('date_sent'),
+                email_data.get('is_read', False),
+                email_data.get('is_flagged', False),
+                email_data.get('has_attachments', False),
+                email_data.get('size_bytes', 0),
+                content_hash
+            ))
+            
+            self.conn.commit()
+            return cursor.lastrowid
     
     def _update_email(self, email_id: int, email_data: Dict[str, Any], content_hash: str):
         """更新现有邮件"""
-        self.conn.execute("""
-            UPDATE emails SET
-                subject = ?, sender = ?, sender_email = ?, recipients = ?,
-                date_sent = ?, is_read = ?, is_flagged = ?, has_attachments = ?,
-                size_bytes = ?, content_hash = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        """, (
-            email_data.get('subject'),
-            email_data.get('sender'),
-            email_data.get('sender_email'),
-            json.dumps(email_data.get('recipients', [])),
-            email_data.get('date_sent'),
-            email_data.get('is_read', False),
-            email_data.get('is_flagged', False),
-            email_data.get('has_attachments', False),
-            email_data.get('size_bytes', 0),
-            content_hash,
-            email_id
-        ))
-        self.conn.commit()
+        with self._lock:
+            self.conn.execute("""
+                UPDATE emails SET
+                    subject = ?, sender = ?, sender_email = ?, recipients = ?,
+                    date_sent = ?, is_read = ?, is_flagged = ?, has_attachments = ?,
+                    size_bytes = ?, content_hash = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (
+                email_data.get('subject'),
+                email_data.get('sender'),
+                email_data.get('sender_email'),
+                json.dumps(email_data.get('recipients', [])),
+                email_data.get('date_sent'),
+                email_data.get('is_read', False),
+                email_data.get('is_flagged', False),
+                email_data.get('has_attachments', False),
+                email_data.get('size_bytes', 0),
+                content_hash,
+                email_id
+            ))
+            self.conn.commit()
     
     def _calculate_content_hash(self, email_data: Dict[str, Any]) -> str:
         """计算邮件内容hash"""
         content = f"{email_data.get('message_id', '')}{email_data.get('subject', '')}{email_data.get('sender', '')}{email_data.get('date_sent', '')}"
         return hashlib.md5(content.encode('utf-8')).hexdigest()
+    
+    def update_account_sync_status(self, account_id: str, status: str, total_emails: int) -> bool:
+        """更新账户同步状态"""
+        with self._lock:
+            try:
+                self.conn.execute("""
+                    UPDATE accounts SET 
+                        last_sync = CURRENT_TIMESTAMP,
+                        sync_status = ?,
+                        total_emails = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (status, total_emails, account_id))
+                self.conn.commit()
+                return True
+            except sqlite3.Error as e:
+                logger.error(f"Failed to update account sync status for {account_id}: {e}")
+                return False
+    
+    def get_email_count_for_account(self, account_id: str) -> Optional[int]:
+        """获取账户的邮件数量"""
+        with self._lock:
+            try:
+                cursor = self.conn.execute(
+                    "SELECT COUNT(*) FROM emails WHERE account_id = ?",
+                    (account_id,)
+                )
+                result = cursor.fetchone()
+                return result[0] if result else 0
+            except sqlite3.Error as e:
+                logger.warning(f"Failed to fetch email count for {account_id}: {e}")
+                return None
     
     def get_sync_status(self, account_id: str = None) -> Dict[str, Any]:
         """获取同步状态"""

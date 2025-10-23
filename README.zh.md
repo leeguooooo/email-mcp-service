@@ -40,13 +40,13 @@ uv run python setup.py
 
 ```bash
 # 交互式模式（推荐新手）
-uv run python init_sync.py
+uv run python scripts/init_sync.py
 
 # 直接初始化数据库
-uv run python init_sync.py init
+uv run python scripts/init_sync.py init
 
 # 启动后台守护进程（持续同步）
-uv run python init_sync.py daemon
+uv run python scripts/init_sync.py daemon
 ```
 
 **功能说明：**
@@ -79,7 +79,29 @@ uv run python init_sync.py daemon
 }
 ```
 
+### 5. 如何使用 MCP 命令
+
+配置完成后，你可以在 MCP 客户端（如 Claude Desktop）中直接使用邮件功能：
+
+1. **启动 MCP 客户端**：确保 MCP 服务已正确配置并运行
+2. **在对话中使用**：直接在对话中请求邮件操作，例如：
+   - "帮我查看未读邮件"
+   - "搜索包含'会议'的邮件"
+   - "标记邮件123为已读"
+   - "发送邮件给 user@example.com"
+
+3. **命令行客户端**：如果不想使用 MCP 客户端，也可以使用命令行客户端：
+   ```bash
+   # 交互式模式
+   uv run python -m clients.mailbox_client
+   
+   # 命令行模式
+   uv run python -m clients.mailbox_client list-emails --limit 10
+   ```
+
 ## 主要功能
+
+> **注意**：以下命令需要在 MCP 客户端（如 Claude Desktop）中使用，不是命令行命令。
 
 ### 查看邮件
 ```bash

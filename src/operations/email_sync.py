@@ -44,7 +44,8 @@ class EmailSyncManager:
         try:
             import json
             from pathlib import Path
-            config_file = Path("sync_config.json")
+            # 使用 data/ 目录下的 sync_config.json
+            config_file = Path("data") / "sync_config.json"
             if config_file.exists():
                 with open(config_file, 'r', encoding='utf-8') as f:
                     config = json.load(f)
@@ -150,6 +151,7 @@ class EmailSyncManager:
                 
                 total_added = 0
                 total_updated = 0
+                folder_errors: List[Tuple[str, str]] = []
                 
                 # 同步每个文件夹
                 for folder_name in folders:
@@ -161,6 +163,12 @@ class EmailSyncManager:
                         total_updated += updated
                     except Exception as e:
                         logger.error(f"Failed to sync folder {folder_name}: {e}")
+                        folder_errors.append((folder_name, str(e)))
+                        continue
+                
+                if folder_errors:
+                    error_details = ", ".join(f"{name}: {err}" for name, err in folder_errors[:3])
+                    raise RuntimeError(f"Folder sync failures detected ({len(folder_errors)} folders). Sample: {error_details}")
                 
                 # 更新账户同步状态
                 self._update_account_sync_status(account_id, 'completed', total_added + total_updated)
@@ -222,8 +230,17 @@ class EmailSyncManager:
                     folder_name = parts[-2]  # 取倒数第二个引号内的内容
                     folder_names.append(folder_name)
             
-            # 过滤掉一些不需要同步的系统文件夹
-            excluded_folders = {'[Gmail]/All Mail', '[Gmail]/Important', '[Gmail]/Chats'}
+            # 过滤掉一些不需要同步的系统文件夹和不可选文件夹
+            excluded_folders = {
+                '[Gmail]',  # Gmail 伪文件夹，无法 SELECT
+                '[Gmail]/All Mail', 
+                '[Gmail]/Important', 
+                '[Gmail]/Chats',
+                'Sent Messages',  # QQ邮箱的伪文件夹
+                'Deleted Messages',  # QQ邮箱的伪文件夹
+                'Drafts',  # 某些邮箱的草稿箱可能无法访问
+                'Junk'  # 垃圾邮件箱可能无法访问
+            }
             folder_names = [f for f in folder_names if f not in excluded_folders]
             
             logger.info(f"Found {len(folder_names)} folders for account {account_id}")
@@ -298,7 +315,8 @@ class EmailSyncManager:
             
         except Exception as e:
             logger.error(f"Folder sync failed for {folder_name}: {e}")
-            return 0, 0
+            # 重新抛出异常，让上层知道同步失败
+            raise
     
     def _fetch_and_store_emails(self, mail, account_id: str, folder_id: int, 
                                email_ids: List[bytes]) -> Tuple[int, int]:
@@ -502,31 +520,16 @@ class EmailSyncManager:
     
     def _update_account_sync_status(self, account_id: str, status: str, total_emails: int):
         """更新账户同步状态"""
-        try:
-            self.db.conn.execute("""
-                UPDATE accounts SET 
-                    last_sync = CURRENT_TIMESTAMP,
-                    sync_status = ?,
-                    total_emails = ?,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            """, (status, total_emails, account_id))
-            self.db.conn.commit()
-        except Exception as e:
-            logger.error(f"Failed to update account sync status: {e}")
+        if not self.db.update_account_sync_status(account_id, status, total_emails):
+            logger.error(f"Failed to update account sync status for {account_id}")
     
     def _is_first_sync(self, account_id: str) -> bool:
         """检查是否是账户的首次同步"""
-        try:
-            cursor = self.db.conn.execute(
-                "SELECT COUNT(*) FROM emails WHERE account_id = ?", 
-                (account_id,)
-            )
-            count = cursor.fetchone()[0]
-            return count == 0
-        except Exception as e:
-            logger.warning(f"Failed to check first sync status: {e}")
-            return True  # 出错时默认为首次同步，使用半年范围
+        count = self.db.get_email_count_for_account(account_id)
+        if count is None:
+            logger.warning("Failed to check first sync status from database, defaulting to first sync")
+            return True
+        return count == 0
     
     def get_sync_status(self) -> Dict[str, Any]:
         """获取同步状态"""

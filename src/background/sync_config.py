@@ -84,7 +84,7 @@ class SyncConfigManager:
         }
     }
     
-    def __init__(self, config_file: str = "sync_config.json"):
+    def __init__(self, config_file: str = "data/sync_config.json"):
         """初始化配置管理器"""
         self.config_file = Path(config_file)
         self.config = self._load_config()

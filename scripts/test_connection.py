@@ -118,7 +118,9 @@ def test_connection(email, password, provider="other"):
 
 def main():
     """Test all configured accounts"""
-    accounts_file = Path("accounts.json")
+    # 脚本在scripts/目录下，需要回到项目根目录找到data/accounts.json
+    project_root = Path(__file__).parent.parent
+    accounts_file = project_root / "data" / "accounts.json"
     
     if not accounts_file.exists():
         print("❌ No accounts.json file found!")

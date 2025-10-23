@@ -10,8 +10,13 @@ import logging
 from pathlib import Path
 
 # 添加src目录到Python路径
-src_path = Path(__file__).parent / "src"
+# 脚本在scripts/目录下，需要回到项目根目录找到src/
+project_root = Path(__file__).parent.parent
+src_path = project_root / "src"
 sys.path.insert(0, str(src_path))
+
+# 同时添加项目根目录到路径，以便使用绝对导入
+sys.path.insert(0, str(project_root))
 
 # 设置日志
 logging.basicConfig(
@@ -22,22 +27,30 @@ logger = logging.getLogger(__name__)
 
 def check_config():
     """检查配置文件是否存在"""
-    config_file = Path("sync_config.json")
+    # 脚本在scripts/目录下，需要回到项目根目录
+    project_root = Path(__file__).parent.parent
+    # sync_config.json 在 data/ 目录下
+    config_file = project_root / "data" / "sync_config.json"
     if not config_file.exists():
         logger.info("创建配置文件...")
-        example_file = Path("sync_config.json.example")
+        example_file = project_root / "examples" / "sync_config.json.example"
         if example_file.exists():
             import shutil
+            # 确保 data 目录存在
+            config_file.parent.mkdir(exist_ok=True)
             shutil.copy(example_file, config_file)
-            logger.info("✅ 配置文件已创建: sync_config.json")
+            logger.info("✅ 配置文件已创建: data/sync_config.json")
         else:
-            logger.error("❌ 找不到 sync_config.json.example 文件")
+            logger.error("❌ 找不到 examples/sync_config.json.example 文件")
             return False
     return True
 
 def check_accounts():
     """检查账户配置"""
-    accounts_file = Path("accounts.json")
+    # 脚本在scripts/目录下，需要回到项目根目录
+    project_root = Path(__file__).parent.parent
+    # accounts.json 在 data/ 目录下
+    accounts_file = project_root / "data" / "accounts.json"
     if not accounts_file.exists():
         logger.error("❌ 找不到 accounts.json 文件")
         logger.info("请先运行: uv run python setup.py")
@@ -62,15 +75,16 @@ def init_database():
     try:
         logger.info("开始初始化邮件数据库...")
         
-        # 导入同步模块
-        from operations.email_sync import EmailSyncManager
+        # 导入同步模块 - 使用绝对导入
+        from src.operations.email_sync import EmailSyncManager
         
         # 创建同步管理器
         sync_manager = EmailSyncManager()
         
         # 执行首次同步（会自动获取6个月历史）
         logger.info("开始首次同步 (将获取最近6个月的邮件)...")
-        result = sync_manager.sync_all_accounts(full_sync=False, max_workers=2)
+        # 临时使用单线程避免数据库并发问题
+        result = sync_manager.sync_all_accounts(full_sync=False, max_workers=1)
         
         if result.get('success'):
             logger.info(f"✅ 同步成功!")

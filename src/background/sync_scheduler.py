@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class SyncScheduler:
     """邮件同步调度器"""
     
-    def __init__(self, config_file: str = "sync_config.json"):
+    def __init__(self, config_file: str = "data/sync_config.json"):
         """初始化调度器"""
         self.config_file = Path(config_file)
         self.config = self._load_config()

@@ -12,7 +12,8 @@ from getpass import getpass
 
 def load_existing_config():
     """加载现有配置"""
-    config_file = Path(__file__).parent / 'accounts.json'
+    # 使用 data/ 目录下的 accounts.json
+    config_file = Path(__file__).parent / 'data' / 'accounts.json'
     if config_file.exists():
         try:
             with open(config_file, 'r', encoding='utf-8') as f:
@@ -23,7 +24,10 @@ def load_existing_config():
 
 def save_config(config):
     """保存配置"""
-    config_file = Path(__file__).parent / 'accounts.json'
+    # 使用 data/ 目录下的 accounts.json
+    config_file = Path(__file__).parent / 'data' / 'accounts.json'
+    # 确保 data 目录存在
+    config_file.parent.mkdir(exist_ok=True)
     with open(config_file, 'w', encoding='utf-8') as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
     print(f"\n✅ 配置已保存到: {config_file}")
