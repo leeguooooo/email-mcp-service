@@ -15,16 +15,17 @@ logger = logging.getLogger(__name__)
 class ParallelOperations:
     """Execute batch operations in parallel with account safety"""
     
-    def __init__(self, max_workers: int = 5):
+    def __init__(self, max_workers: int = 5, account_manager=None):
         """
         Initialize parallel operations handler
         
         Args:
             max_workers: Maximum number of concurrent operations
+            account_manager: Optional AccountManager instance to reuse (avoids re-reading config)
         """
         self.max_workers = max_workers
         self._lock = threading.Lock()
-        self.account_manager = AccountManager()
+        self.account_manager = account_manager or AccountManager()
     
     def execute_batch_operation(
         self,

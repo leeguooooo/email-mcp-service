@@ -9,24 +9,33 @@ from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import time
+import re
 
 from ..account_manager import AccountManager
 from ..connection_manager import ConnectionManager
 from ..database.email_sync_db import EmailSyncDatabase
 from ..connection_pool import get_connection_pool
+from ..background.sync_config import SyncConfigManager
 
 logger = logging.getLogger(__name__)
 
 class EmailSyncManager:
     """邮件同步管理器"""
     
-    def __init__(self, db_path: str = None, config: Dict[str, Any] = None):
-        """初始化同步管理器"""
-        self.account_manager = AccountManager()
+    def __init__(self, db_path: str = None, config: Dict[str, Any] = None, account_manager=None):
+        """
+        初始化同步管理器
+        
+        Args:
+            db_path: 数据库路径
+            config: 同步配置
+            account_manager: 可选的 AccountManager 实例（避免重新读取配置）
+        """
+        self.account_manager = account_manager or AccountManager()
         self.db = EmailSyncDatabase(db_path)
         self.sync_lock = threading.Lock()
         self.sync_status = {}
-        self.config = config or self._load_config()
+        self.config = self._normalize_config(config)
         self.connection_pool = get_connection_pool()
         # 延迟导入避免循环依赖
         self._health_monitor = None
@@ -42,22 +51,56 @@ class EmailSyncManager:
     def _load_config(self) -> Dict[str, Any]:
         """加载同步配置"""
         try:
-            import json
-            from pathlib import Path
-            # 使用 data/ 目录下的 sync_config.json
-            config_file = Path("data") / "sync_config.json"
-            if config_file.exists():
-                with open(config_file, 'r', encoding='utf-8') as f:
-                    config = json.load(f)
-                    return config.get('sync', {})
+            manager = SyncConfigManager()
+            config = manager.get_config()
         except Exception as e:
-            logger.warning(f"Failed to load sync config: {e}")
+            logger.warning(f"Failed to load sync config via SyncConfigManager: {e}")
+            config = {}
         
-        # 返回默认配置
+        # 兼容旧配置（无 sync 节点）
+        sync_cfg = config.get('sync', {}) if isinstance(config.get('sync'), dict) else {}
+        first_sync_days = sync_cfg.get('first_sync_days', config.get('first_sync_days', 180))
+        incremental_sync_days = sync_cfg.get('incremental_sync_days', config.get('incremental_sync_days', 7))
+        
+        folders_cfg = config.get('folders', {})
+        exclude_folders = folders_cfg.get('exclude_folders', config.get('exclude_folders', []))
+        priority_folders = folders_cfg.get('priority_folders', config.get('priority_folders', []))
+        sync_all = folders_cfg.get('sync_all', folders_cfg.get('sync_all', True))
+        
         return {
-            "first_sync_days": 180,
-            "incremental_sync_days": 7
+            "first_sync_days": first_sync_days or 180,
+            "incremental_sync_days": incremental_sync_days or 7,
+            "folders": {
+                "sync_all": sync_all,
+                "exclude_folders": exclude_folders,
+                "priority_folders": priority_folders
+            }
         }
+    
+    def _normalize_config(self, config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """规范化同步配置（兼容传入的全量或部分配置）"""
+        if not config:
+            return self._load_config()
+        
+        # 如果传入的就是 SyncConfigManager 的整体配置，则交给 _load_config 逻辑处理
+        if isinstance(config, dict) and ('sync' in config or 'folders' in config or 'first_sync_days' in config):
+            # 将外部配置与默认加载的配置合并，避免缺失字段
+            base = self._load_config()
+            # 提取嵌套的 sync 配置
+            sync_cfg = config.get('sync', {}) if isinstance(config.get('sync'), dict) else {}
+            base['first_sync_days'] = sync_cfg.get('first_sync_days', config.get('first_sync_days', base['first_sync_days']))
+            base['incremental_sync_days'] = sync_cfg.get('incremental_sync_days', config.get('incremental_sync_days', base['incremental_sync_days']))
+            
+            folders_cfg = config.get('folders', {})
+            base_folders = base.get('folders', {})
+            base_folders['sync_all'] = folders_cfg.get('sync_all', base_folders.get('sync_all', True))
+            base_folders['exclude_folders'] = folders_cfg.get('exclude_folders', base_folders.get('exclude_folders', []))
+            base_folders['priority_folders'] = folders_cfg.get('priority_folders', base_folders.get('priority_folders', []))
+            base['folders'] = base_folders
+            return base
+        
+        # 未知格式，退回默认
+        return self._load_config()
         
     def sync_all_accounts(self, full_sync: bool = False, max_workers: int = 3) -> Dict[str, Any]:
         """
@@ -223,14 +266,26 @@ class EmailSyncManager:
                 raise Exception(f"Failed to list folders: {folders}")
             
             folder_names = []
-            for folder in folders:
-                # 解析文件夹名称
-                folder_str = folder.decode('utf-8')
-                # IMAP LIST响应格式: (flags) delimiter "folder_name"
-                parts = folder_str.split('"')
-                if len(parts) >= 3:
-                    folder_name = parts[-2]  # 取倒数第二个引号内的内容
+            for raw_folder in folders:
+                try:
+                    decoded = raw_folder.decode('utf-8')
+                except Exception:
+                    decoded = str(raw_folder)
+                # IMAP LIST 响应形如: (* FLAGS) "/" "Folder"
+                match = re.search(r'\"([^"]+)\"$', decoded)
+                if match:
+                    folder_name = match.group(1)
+                else:
+                    parts = decoded.split(' ')
+                    folder_name = parts[-1].strip('"') if parts else None
+                if folder_name:
                     folder_names.append(folder_name)
+            
+            # 配置化过滤与优先级
+            cfg_folders = self.config.get('folders', {})
+            exclude_cfg = set(cfg_folders.get('exclude_folders', []))
+            priority_cfg = cfg_folders.get('priority_folders', [])
+            sync_all = cfg_folders.get('sync_all', True)
             
             # 过滤掉一些不需要同步的系统文件夹和不可选文件夹
             excluded_folders = {
@@ -243,8 +298,18 @@ class EmailSyncManager:
                 'Drafts',  # 某些邮箱的草稿箱可能无法访问
                 'Junk',  # 垃圾邮件箱可能无法访问
                 'NAS &W5pl9k77UqE-'  # 163邮箱的问题文件夹，EXAMINE 命令错误
-            }
+            } | exclude_cfg
             folder_names = [f for f in folder_names if f not in excluded_folders]
+            
+            # 如果 sync_all 关闭，则只同步 priority 列表中存在的文件夹
+            if not sync_all and priority_cfg:
+                priority_set = set(priority_cfg)
+                folder_names = [f for f in folder_names if f in priority_set]
+            
+            # 按优先列表排序（其余保持原顺序）
+            if priority_cfg:
+                priority_order = {name: idx for idx, name in enumerate(priority_cfg)}
+                folder_names.sort(key=lambda name: priority_order.get(name, len(priority_order)))
             
             logger.info(f"Found {len(folder_names)} folders for account {account_id}")
             return folder_names
@@ -287,34 +352,53 @@ class EmailSyncManager:
             else:
                 # 检查是否是首次同步（数据库中没有该账户的邮件）
                 is_first_sync = self._is_first_sync(account_id)
+                last_sync_time = self.db.get_last_sync_time(account_id)
                 
-                if is_first_sync:
+                if is_first_sync or not last_sync_time:
                     # 首次同步：获取配置的天数范围内的邮件
                     days_back = self.config.get('first_sync_days', 180)  # 默认半年
-                    date_from = (datetime.now() - timedelta(days=days_back)).strftime("%d-%b-%Y")
+                    date_from_dt = datetime.now() - timedelta(days=days_back)
+                    date_from = date_from_dt.strftime("%d-%b-%Y")
                     search_criteria = f'SINCE {date_from}'
                     logger.info(f"First sync: processing messages since {date_from} (last {days_back} days)")
                 else:
-                    # 增量同步：获取配置的天数范围内的邮件
-                    days_back = self.config.get('incremental_sync_days', 7)  # 默认7天
-                    date_from = (datetime.now() - timedelta(days=days_back)).strftime("%d-%b-%Y")
+                    # 增量同步：从上次同步时间往前回退一天，避免边界遗漏
+                    buffer_hours = 24
+                    since_dt = last_sync_time - timedelta(hours=buffer_hours)
+                    # 如果用户配置了最大增量窗口，则限制最远时间
+                    days_back = self.config.get('incremental_sync_days', 7)
+                    max_since_dt = datetime.now() - timedelta(days=days_back)
+                    if since_dt < max_since_dt:
+                        since_dt = max_since_dt
+                    date_from = since_dt.strftime("%d-%b-%Y")
                     search_criteria = f'SINCE {date_from}'
-                    logger.info(f"Incremental sync: processing messages since {date_from} (last {days_back} days)")
+                    logger.info(f"Incremental sync: processing messages since {date_from} (last sync {last_sync_time})")
             
             # 搜索邮件
-            result, data = mail.search(None, search_criteria)
+            result, data = mail.uid('search', None, search_criteria)
             if result != 'OK':
-                logger.warning(f"Search failed for folder {folder_name}: {data}")
+                logger.warning(f"UID search failed for folder {folder_name}: {data}")
                 return 0, 0
             
             email_ids = data[0].split() if data[0] else []
             logger.info(f"Found {len(email_ids)} messages to sync in {folder_name}")
             
             if not email_ids:
+                # 更新文件夹同步时间
+                self.db.add_or_update_folder(
+                    account_id, folder_name, folder_name, total_messages, last_sync=datetime.now().isoformat()
+                )
                 return 0, 0
             
             # 批量获取邮件信息
-            return self._fetch_and_store_emails(mail, account_id, folder_id, email_ids)
+            added, updated = self._fetch_and_store_emails(mail, account_id, folder_id, email_ids)
+            
+            # 更新文件夹同步时间
+            self.db.add_or_update_folder(
+                account_id, folder_name, folder_name, total_messages, last_sync=datetime.now().isoformat()
+            )
+            
+            return added, updated
             
         except Exception as e:
             logger.error(f"Folder sync failed for {folder_name}: {e}")
@@ -364,7 +448,7 @@ class EmailSyncManager:
         for email_id in email_ids:
             try:
                 # 获取邮件头部信息
-                result, data = mail.fetch(email_id, '(RFC822.HEADER FLAGS UID)')
+                result, data = mail.uid('fetch', email_id, '(RFC822.HEADER FLAGS UID)')
                 if result != 'OK':
                     continue
                 

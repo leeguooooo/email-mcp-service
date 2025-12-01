@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 
 from ..operations.email_sync import EmailSyncManager
+from .sync_config import SyncConfigManager
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ class SyncScheduler:
         self.config = self._load_config()
         self.sync_manager = EmailSyncManager(
             self.config.get('storage', {}).get('db_path', 'data/email_sync.db'),
-            self.config.get('sync', {})
+            self.config
         )
         self.scheduler_thread = None
         self.running = False
@@ -33,44 +34,49 @@ class SyncScheduler:
         
     def _load_config(self) -> Dict[str, Any]:
         """加载同步配置"""
-        default_config = {
-            "enabled": True,
-            "sync_interval_minutes": 15,  # 默认15分钟同步一次
-            "full_sync_interval_hours": 24,  # 24小时做一次完全同步
-            "quiet_hours": {  # 静默时间段，不进行同步
+        try:
+            manager = SyncConfigManager(str(self.config_file))
+            raw_config = manager.get_config()
+        except Exception as e:
+            logger.error(f"Failed to load config via SyncConfigManager: {e}, using legacy load")
+            raw_config = {}
+        
+        # 兼容旧配置（扁平化）
+        sync_cfg = raw_config.get('sync', {}) if isinstance(raw_config.get('sync'), dict) else {}
+        normalized = {
+            "sync": {
+                "enabled": sync_cfg.get('enabled', raw_config.get('enabled', True)),
+                "interval_minutes": sync_cfg.get('interval_minutes', raw_config.get('sync_interval_minutes', 15)),
+                "full_sync_hours": sync_cfg.get('full_sync_hours', raw_config.get('full_sync_interval_hours', 24)),
+                "startup_delay_seconds": sync_cfg.get('startup_delay_seconds', raw_config.get('startup_delay_seconds', 30)),
+            },
+            "quiet_hours": raw_config.get('quiet_hours', {
                 "enabled": False,
                 "start": "23:00",
                 "end": "06:00"
-            },
-            "retry_settings": {
+            }),
+            "retry": raw_config.get('retry', raw_config.get('retry_settings', {
                 "max_retries": 3,
                 "retry_delay_minutes": 5
-            },
-            "performance": {
+            })),
+            "performance": raw_config.get('performance', {
                 "max_concurrent_accounts": 2,
                 "batch_size": 50,
                 "request_delay_ms": 100
-            },
-            "auto_cleanup": {
+            }),
+            "auto_cleanup": raw_config.get('cleanup', raw_config.get('auto_cleanup', {
                 "enabled": True,
-                "days_to_keep": 90,  # 保留90天的邮件
+                "days_to_keep": 90,
                 "cleanup_interval_hours": 24
-            }
+            })),
+            "storage": raw_config.get('storage', {
+                "db_path": "data/email_sync.db"
+            })
         }
         
-        if self.config_file.exists():
-            try:
-                with open(self.config_file, 'r', encoding='utf-8') as f:
-                    config = json.load(f)
-                # 合并默认配置
-                default_config.update(config)
-                return default_config
-            except Exception as e:
-                logger.error(f"Failed to load config: {e}, using defaults")
-        
-        # 保存默认配置
-        self._save_config(default_config)
-        return default_config
+        # 保存回文件（保持兼容）
+        self._save_config(normalized)
+        return normalized
     
     def _save_config(self, config: Dict[str, Any]):
         """保存配置"""
@@ -86,7 +92,7 @@ class SyncScheduler:
             logger.warning("Scheduler is already running")
             return
         
-        if not self.config.get('enabled', True):
+        if not self.config.get('sync', {}).get('enabled', True):
             logger.info("Sync scheduler is disabled in config")
             return
         
@@ -140,14 +146,16 @@ class SyncScheduler:
     
     def _setup_schedules(self):
         """设置定时任务"""
-        interval_minutes = self.config.get('sync_interval_minutes', 15)
-        full_sync_hours = self.config.get('full_sync_interval_hours', 24)
+        sync_cfg = self.config.get('sync', {})
+        interval_minutes = sync_cfg.get('interval_minutes', 15)
+        full_sync_hours = sync_cfg.get('full_sync_hours', 24)
         
         # 增量同步任务
         schedule.every(interval_minutes).minutes.do(self._scheduled_sync, full_sync=False)
         
-        # 完全同步任务（每天凌晨2点）
-        schedule.every().day.at("02:00").do(self._scheduled_sync, full_sync=True)
+        # 完全同步任务（按小时间隔）
+        if full_sync_hours and full_sync_hours > 0:
+            schedule.every(full_sync_hours).hours.do(self._scheduled_sync, full_sync=True)
         
         # 清理任务（如果启用）
         if self.config.get('auto_cleanup', {}).get('enabled', False):
@@ -204,8 +212,9 @@ class SyncScheduler:
     
     def _sync_with_retry(self, full_sync: bool) -> Dict[str, Any]:
         """带重试的同步"""
-        max_retries = self.config.get('retry_settings', {}).get('max_retries', 3)
-        retry_delay = self.config.get('retry_settings', {}).get('retry_delay_minutes', 5)
+        retry_cfg = self.config.get('retry', {})
+        max_retries = retry_cfg.get('max_retries', 3)
+        retry_delay = retry_cfg.get('retry_delay_minutes', 5)
         
         last_error = None
         
@@ -343,7 +352,24 @@ class SyncScheduler:
             old_config = self.config.copy()
             
             # 更新配置
-            self.config.update(new_config)
+            # 合并 sync 嵌套配置
+            if 'sync' in new_config:
+                self.config.setdefault('sync', {}).update(new_config['sync'])
+            else:
+                # 兼容扁平字段
+                if 'sync_interval_minutes' in new_config:
+                    self.config.setdefault('sync', {})['interval_minutes'] = new_config['sync_interval_minutes']
+                if 'full_sync_interval_hours' in new_config:
+                    self.config.setdefault('sync', {})['full_sync_hours'] = new_config['full_sync_interval_hours']
+                if 'enabled' in new_config:
+                    self.config.setdefault('sync', {})['enabled'] = new_config['enabled']
+            
+            for key in ['quiet_hours', 'retry', 'performance', 'auto_cleanup', 'storage']:
+                if key in new_config:
+                    if isinstance(new_config[key], dict):
+                        self.config.setdefault(key, {}).update(new_config[key])
+                    else:
+                        self.config[key] = new_config[key]
             self._save_config(self.config)
             
             # 如果调度器正在运行，重新设置任务
@@ -363,16 +389,16 @@ class SyncScheduler:
     
     def _validate_config(self, config: Dict[str, Any]):
         """验证配置"""
-        # 检查必需的数值范围
-        if 'sync_interval_minutes' in config:
-            interval = config['sync_interval_minutes']
+        sync_cfg = config.get('sync', config)
+        interval = sync_cfg.get('interval_minutes') if isinstance(sync_cfg, dict) else config.get('sync_interval_minutes')
+        if interval is not None:
             if not isinstance(interval, int) or interval < 1 or interval > 1440:
-                raise ValueError("sync_interval_minutes must be between 1 and 1440")
+                raise ValueError("sync.interval_minutes must be between 1 and 1440")
         
-        if 'full_sync_interval_hours' in config:
-            interval = config['full_sync_interval_hours']
-            if not isinstance(interval, int) or interval < 1 or interval > 168:
-                raise ValueError("full_sync_interval_hours must be between 1 and 168")
+        full_interval = sync_cfg.get('full_sync_hours') if isinstance(sync_cfg, dict) else config.get('full_sync_interval_hours')
+        if full_interval is not None:
+            if not isinstance(full_interval, int) or full_interval < 1 or full_interval > 168:
+                raise ValueError("sync.full_sync_hours must be between 1 and 168")
         
         # 验证时间格式
         quiet_hours = config.get('quiet_hours', {})

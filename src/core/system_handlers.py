@@ -3,7 +3,9 @@ System tool handlers - Account management, connection checks
 Uses service layer to reduce coupling with implementation details
 """
 import logging
+import subprocess
 from typing import Dict, Any, List
+from pathlib import Path
 from .tool_handlers import ToolContext
 
 logger = logging.getLogger(__name__)
@@ -116,6 +118,33 @@ class SystemHandlers:
             
         except Exception as e:
             logger.error(f"List accounts failed: {e}")
+            return [{
+                "type": "text",
+                "text": f"{ctx.get_message('operation_failed')}{str(e)}"
+            }]
+
+    @staticmethod
+    def handle_get_version(args: Dict[str, Any], ctx: ToolContext) -> List[Dict[str, Any]]:
+        """Handle get_version tool"""
+        try:
+            from ..config.version import __version__
+            version = __version__
+            git_hash = "unknown"
+            try:
+                repo_root = Path(__file__).resolve().parent.parent
+                git_hash = subprocess.check_output(
+                    ["git", "-C", str(repo_root), "rev-parse", "--short", "HEAD"],
+                    stderr=subprocess.DEVNULL
+                ).decode().strip()
+            except Exception:
+                pass
+            
+            text = f"Version: {version}"
+            if git_hash:
+                text += f"\nGit: {git_hash}"
+            return [{"type": "text", "text": text}]
+        except Exception as e:
+            logger.error(f"Get version failed: {e}")
             return [{
                 "type": "text",
                 "text": f"{ctx.get_message('operation_failed')}{str(e)}"

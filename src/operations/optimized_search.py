@@ -52,7 +52,8 @@ def search_single_account(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     folder: str = "INBOX",
-    limit: int = 50
+    limit: int = 50,
+    account_manager: Optional[AccountManager] = None
 ) -> Dict[str, Any]:
     """Search emails in a single account using UID search"""
     try:
@@ -60,8 +61,8 @@ def search_single_account(
         account_email = account_info['email']
         
         # Get account details
-        account_manager = AccountManager()
-        account = account_manager.get_account(account_id)
+        manager = account_manager or AccountManager()
+        account = manager.get_account(account_id)
         if not account:
             raise ValueError(f"Account {account_id} not found")
         
@@ -129,10 +130,23 @@ def search_all_accounts_parallel(
     date_to: Optional[str] = None,
     folder: str = "all",
     limit: int = 50,
-    account_id: Optional[str] = None
+    account_id: Optional[str] = None,
+    account_manager: Optional[AccountManager] = None
 ) -> Dict[str, Any]:
     """
     Search emails across all accounts in parallel with caching
+
+    Args:
+        query: Search query string
+        search_in: Field scope for search
+        unread_only: Filter unread messages
+        date_from: Lower bound date filter
+        date_to: Upper bound date filter
+        folder: IMAP folder to search (use "all" for INBOX default)
+        limit: Maximum number of emails to return
+        account_id: Optional constrain to a single account
+        account_manager: Existing AccountManager to reuse (prevents config
+            desync when callers use custom account storage)
     """
     # Check cache first
     cache_params = {
@@ -152,9 +166,9 @@ def search_all_accounts_parallel(
     
     try:
         # Get accounts to search
-        account_manager = AccountManager()
+        manager = account_manager or AccountManager()
         if account_id:
-            account = account_manager.get_account(account_id)
+            account = manager.get_account(account_id)
             if not account:
                 return {
                     'success': False,
@@ -162,7 +176,7 @@ def search_all_accounts_parallel(
                 }
             accounts = [{'id': account_id, 'email': account['email'], 'provider': account['provider']}]
         else:
-            accounts = account_manager.list_accounts()
+            accounts = manager.list_accounts()
         
         if not accounts:
             return {
@@ -194,7 +208,8 @@ def search_all_accounts_parallel(
                         date_from,
                         date_to,
                         search_folder,
-                        limit
+                        limit,
+                        manager
                     )
                     futures.append((future, account, search_folder))
             

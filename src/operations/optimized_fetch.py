@@ -133,7 +133,7 @@ def _resolve_folder(candidate: str,
         return available_map[normalized]
     return None
 
-def fetch_all_providers_optimized(limit: int = 50, unread_only: bool = True, use_cache: bool = True) -> Dict[str, Any]:
+def fetch_all_providers_optimized(limit: int = 50, unread_only: bool = True, use_cache: bool = True, account_manager=None) -> Dict[str, Any]:
     """
     Optimized fetch that checks key folders for all email providers
     
@@ -141,6 +141,7 @@ def fetch_all_providers_optimized(limit: int = 50, unread_only: bool = True, use
         limit: Total email limit
         unread_only: Only fetch unread emails
         use_cache: Whether to use cached results
+        account_manager: Optional AccountManager instance to reuse (avoids re-reading config)
         
     Returns:
         Combined results from all accounts and important folders
@@ -152,7 +153,10 @@ def fetch_all_providers_optimized(limit: int = 50, unread_only: bool = True, use
         if cached:
             logger.info("Returning cached email results")
             return cached
-    account_manager = AccountManager()
+    
+    # Reuse provided manager or create new one
+    if account_manager is None:
+        account_manager = AccountManager()
     accounts = account_manager.list_accounts()
     
     if not accounts:

@@ -65,9 +65,9 @@ class TestMCPTools(unittest.TestCase):
         unread_prop = list_emails['inputSchema']['properties']['unread_only']
         self.assertEqual(unread_prop['default'], True)
         
-        # Check limit defaults to 50
+        # Check limit defaults to 100
         limit_prop = list_emails['inputSchema']['properties']['limit']
-        self.assertEqual(limit_prop['default'], 50)
+        self.assertEqual(limit_prop['default'], 100)
     
     def test_required_parameters(self):
         """Test required parameters are properly defined"""

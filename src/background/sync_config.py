@@ -16,7 +16,7 @@ class SyncConfigManager:
         "sync": {
             "enabled": True,
             "auto_start": True,  # 服务启动时自动开始同步
-            "interval_minutes": 15,  # 增量同步间隔（分钟）
+            "interval_minutes": 5,  # 增量同步间隔（分钟）
             "full_sync_hours": 24,   # 完全同步间隔（小时）
             "startup_delay_seconds": 30,  # 启动延迟，避免启动时资源冲突
         },

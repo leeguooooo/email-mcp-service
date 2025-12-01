@@ -86,41 +86,27 @@ class CachedEmailOperations:
             
             folder_id = folder_row['id']
             
-            # 检查缓存新鲜度
-            if account_id:
-                cursor.execute("""
-                    SELECT MAX(last_synced) as last_sync
-                    FROM emails 
-                    WHERE account_id = ? AND folder_id = ?
-                """, (account_id, folder_id))
-            else:
-                cursor.execute("""
-                    SELECT MAX(last_synced) as last_sync
-                    FROM emails 
-                    WHERE folder_id = ?
-                """, (folder_id,))
-            
+            # 检查缓存新鲜度，使用 folders 表的 last_sync
+            cursor.execute("""
+                SELECT last_sync FROM folders WHERE id = ?
+            """, (folder_id,))
             row = cursor.fetchone()
             last_sync_str = row['last_sync'] if row else None
             
-            if not last_sync_str:
-                logger.debug(f"No sync data for account_id={account_id}, folder={folder}")
-                conn.close()
-                return None
-            
-            # 解析同步时间
-            try:
-                last_sync = datetime.fromisoformat(last_sync_str)
-                age_minutes = (datetime.now() - last_sync).total_seconds() / 60
-                
-                if age_minutes > max_age_minutes:
-                    logger.debug(f"Cache expired ({age_minutes:.1f} min > {max_age_minutes} min)")
+            age_minutes = 0.0
+            if last_sync_str:
+                try:
+                    last_sync = datetime.fromisoformat(last_sync_str)
+                    age_minutes = (datetime.now() - last_sync).total_seconds() / 60
+                    
+                    if age_minutes > max_age_minutes:
+                        logger.debug(f"Cache expired ({age_minutes:.1f} min > {max_age_minutes} min)")
+                        conn.close()
+                        return None
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Failed to parse last_sync time: {e}")
                     conn.close()
                     return None
-            except (ValueError, TypeError) as e:
-                logger.warning(f"Failed to parse last_sync time: {e}")
-                conn.close()
-                return None
             
             # 从缓存读取邮件（folder_id 已经在上面获取）
             query = """
@@ -286,4 +272,3 @@ class CachedEmailOperations:
                 "available": False,
                 "error": str(e)
             }
-

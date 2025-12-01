@@ -9,7 +9,7 @@ LIST_EMAILS_SCHEMA = {
         "limit": {
             "type": "integer",
             "description": "Maximum number of emails to return (default: 50)",
-            "default": 50
+            "default": 100
         },
         "offset": {
             "type": "integer",
@@ -23,8 +23,8 @@ LIST_EMAILS_SCHEMA = {
         },
         "folder": {
             "type": "string",
-            "description": "Email folder to fetch from (default: 'INBOX')",
-            "default": "INBOX"
+            "description": "Email folder to fetch from (default: 'all' = no folder filter when using cache; falls back to INBOX for live IMAP)",
+            "default": "all"
         },
         "account_id": {
             "type": "string",
@@ -33,6 +33,11 @@ LIST_EMAILS_SCHEMA = {
         "include_metadata": {
             "type": "boolean",
             "description": "Include source metadata (cache/fetch) in results (default: true)",
+            "default": True
+        },
+        "use_cache": {
+            "type": "boolean",
+            "description": "Use local sync cache (email_sync.db) instead of live IMAP when available",
             "default": True
         }
     }
@@ -256,6 +261,42 @@ DELETE_EMAILS_SCHEMA = {
                     }
                 }
             }
+        }
+    }
+}
+
+BATCH_DELETE_EMAILS_SCHEMA = {
+    "type": "object",
+    "required": ["email_ids"],
+    "properties": {
+        "email_ids": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "List of email IDs to delete"
+        },
+        "folder": {
+            "type": "string",
+            "description": "Source folder (default: 'INBOX')",
+            "default": "INBOX"
+        },
+        "permanent": {
+            "type": "boolean",
+            "description": "Permanently delete instead of moving to trash",
+            "default": False
+        },
+        "trash_folder": {
+            "type": "string",
+            "description": "Trash folder name (default: 'Trash')",
+            "default": "Trash"
+        },
+        "account_id": {
+            "type": "string",
+            "description": "Specific account ID (recommended)"
+        },
+        "dry_run": {
+            "type": "boolean",
+            "description": "If true, only validate without executing (default: false)",
+            "default": False
         }
     }
 }
@@ -742,4 +783,9 @@ GET_RECENT_ACTIVITY_SCHEMA = {
             "default": True
         }
     }
+}
+
+GET_VERSION_SCHEMA = {
+    "type": "object",
+    "properties": {}
 }

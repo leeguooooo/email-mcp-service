@@ -30,10 +30,17 @@ FOLDER_NAME_MAP = {
 class MultiFolderFetcher:
     """Fetch emails from multiple folders across accounts"""
     
-    def __init__(self, max_workers: int = 5):
+    def __init__(self, max_workers: int = 5, account_manager=None):
+        """
+        Initialize multi-folder fetcher
+        
+        Args:
+            max_workers: Maximum number of concurrent operations
+            account_manager: Optional AccountManager instance to reuse (avoids re-reading config)
+        """
         self.max_workers = max_workers
         self._lock = threading.Lock()
-        self.account_manager = AccountManager()
+        self.account_manager = account_manager or AccountManager()
     
     def fetch_all_unread(
         self,

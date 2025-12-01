@@ -3,11 +3,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import sqlite3
+import subprocess
 import sys
 import textwrap
+from pathlib import Path
 from typing import Any, Dict, Iterable
+import datetime
 
 from .client import MailboxClient
+from src.background.sync_scheduler import get_scheduler, start_background_sync
+from src.background.sync_health_monitor import get_health_monitor
+from src.config.version import __version__
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -44,13 +52,19 @@ def build_parser() -> argparse.ArgumentParser:
     # list-emails
     list_emails_parser = subparsers.add_parser(
         "list-emails",
-        help="查看邮件列表（默认聚合所有账户）",
+        help="查看邮件列表（默认聚合所有账户，优先读取缓存）",
     )
     list_emails_parser.add_argument(
         "--limit",
         type=int,
-        default=20,
-        help="返回的邮件数量（默认 20）",
+        default=100,
+        help="返回的邮件数量（默认 100）",
+    )
+    list_emails_parser.add_argument(
+        "--offset",
+        type=int,
+        default=0,
+        help="分页偏移量",
     )
     list_emails_parser.add_argument(
         "--unread-only",
@@ -59,18 +73,37 @@ def build_parser() -> argparse.ArgumentParser:
     )
     list_emails_parser.add_argument(
         "--account-id",
-        help="指定邮箱账户 ID，只查看该账户的邮件",
+        help="指定邮箱账户 ID/邮箱，只查看该账户的邮件",
     )
     list_emails_parser.add_argument(
         "--folder",
-        default="INBOX",
-        help="指定邮箱文件夹（默认 INBOX）",
+        default="all",
+        help="指定邮箱文件夹（默认 all=不筛选；IMAP 回退时用 INBOX）",
+    )
+    list_emails_parser.add_argument(
+        "--live",
+        action="store_true",
+        help="强制走 IMAP 实时获取（默认使用缓存）",
     )
     list_emails_parser.add_argument(
         "--json",
         action="store_true",
         help="以 JSON 格式输出结果",
     )
+
+    # search-emails
+    search_parser = subparsers.add_parser(
+        "search",
+        help="搜索邮件（默认使用缓存）",
+    )
+    search_parser.add_argument("--query", required=True, help="搜索关键词")
+    search_parser.add_argument("--account-id", help="账户 ID/邮箱")
+    search_parser.add_argument("--date-from", help="开始日期 YYYY-MM-DD")
+    search_parser.add_argument("--date-to", help="结束日期 YYYY-MM-DD")
+    search_parser.add_argument("--limit", type=int, default=50, help="结果数量")
+    search_parser.add_argument("--unread-only", action="store_true", help="仅未读")
+    search_parser.add_argument("--live", action="store_true", help="强制走 IMAP")
+    search_parser.add_argument("--json", action="store_true", help="JSON 输出")
 
     # show-email
     show_email_parser = subparsers.add_parser(
@@ -95,6 +128,28 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="以 JSON 格式输出结果",
     )
+
+    # sync control
+    sync_parser = subparsers.add_parser("sync", help="同步控制")
+    sync_parser.add_argument("action", choices=["start", "stop", "status", "force"], help="操作")
+    sync_parser.add_argument("--account-id", help="账户 ID/邮箱（force 可用）")
+    sync_parser.add_argument("--full", action="store_true", help="全量同步")
+    sync_parser.add_argument("--json", action="store_true", help="JSON 输出")
+
+    # health
+    health_parser = subparsers.add_parser("health", help="同步健康状态")
+    health_parser.add_argument("--json", action="store_true", help="JSON 输出")
+
+    # version
+    version_parser = subparsers.add_parser("version", help="版本信息")
+    version_parser.add_argument("--json", action="store_true", help="JSON 输出")
+
+    # db ops
+    db_parser = subparsers.add_parser("db", help="数据库维护")
+    db_sub = db_parser.add_subparsers(dest="db_cmd", required=True)
+    db_sub.add_parser("checkpoint", help="WAL checkpoint + VACUUM")
+    db_sub.add_parser("clear", help="备份后清空本地 DB (需停服务)")
+    db_sub.add_parser("size", help="查看 DB/WAL 大小")
 
     return parser
 
@@ -123,6 +178,19 @@ def main(argv: Iterable[str] | None = None) -> int:
             unread_only=args.unread_only,
             folder=args.folder,
             account_id=args.account_id,
+            offset=args.offset,
+            use_cache=not args.live,
+        )
+        return _handle_output(result, args.json, _print_emails)
+
+    if args.command == "search":
+        result = client.search_emails(
+            query=args.query,
+            account_id=args.account_id,
+            date_from=args.date_from,
+            date_to=args.date_to,
+            limit=args.limit,
+            unread_only=args.unread_only,
         )
         return _handle_output(result, args.json, _print_emails)
 
@@ -133,6 +201,22 @@ def main(argv: Iterable[str] | None = None) -> int:
             account_id=args.account_id,
         )
         return _handle_output(result, args.json, _print_email_detail)
+
+    if args.command == "sync":
+        return _handle_output(
+            _sync_action(args),
+            args.json,
+            _print_generic,
+        )
+
+    if args.command == "health":
+        return _handle_output(_sync_health(), args.json, _print_generic)
+
+    if args.command == "version":
+        return _handle_output(_version(), args.json, _print_generic)
+
+    if args.command == "db":
+        return _handle_output(_db_action(args.db_cmd), False, _print_generic)
 
     parser.error("未知命令")
     return 2
@@ -152,6 +236,108 @@ def _handle_output(result: Dict[str, Any], as_json: bool, printer) -> int:
 
     printer(result)
     return 0
+
+
+def _print_generic(result: Dict[str, Any]) -> None:
+    """通用打印：键值对或列表"""
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def _sync_action(args) -> Dict[str, Any]:
+    """同步控制操作"""
+    try:
+        scheduler = get_scheduler()
+        action = args.action
+        if action == "start":
+            scheduler.start_scheduler()
+            return {"success": True, "message": "sync started"}
+        if action == "stop":
+            scheduler.stop_scheduler()
+            return {"success": True, "message": "sync stopped"}
+        if action == "status":
+            status = scheduler.get_sync_status()
+            status["success"] = True
+            return status
+        if action == "force":
+            if args.account_id:
+                from src.operations.email_sync import EmailSyncManager
+                mgr = EmailSyncManager()
+                res = mgr.sync_single_account(args.account_id, full_sync=args.full)
+                mgr.close()
+                res["success"] = res.get("success", True)
+                return res
+            res = scheduler.force_sync(args.full)
+            res["success"] = res.get("success", True)
+            return res
+        return {"success": False, "error": f"未知同步操作: {action}"}
+    except Exception as exc:
+        return {"success": False, "error": str(exc)}
+
+
+def _sync_health() -> Dict[str, Any]:
+    try:
+        monitor = get_health_monitor()
+        summary = monitor.get_overall_health()
+        summary["success"] = True
+        return summary
+    except Exception as exc:
+        return {"success": False, "error": str(exc)}
+
+
+def _version() -> Dict[str, Any]:
+    try:
+        git_hash = ""
+        repo_root = Path(__file__).resolve().parents[2]
+        try:
+            git_hash = (
+                subprocess.check_output(
+                    ["git", "-C", str(repo_root), "rev-parse", "--short", "HEAD"],
+                    stderr=subprocess.DEVNULL,
+                )
+                .decode()
+                .strip()
+            )
+        except Exception:
+            git_hash = "unknown"
+        return {"success": True, "version": __version__, "git": git_hash}
+    except Exception as exc:
+        return {"success": False, "error": str(exc)}
+
+
+def _db_action(action: str) -> Dict[str, Any]:
+    db_path = Path("data/email_sync.db")
+    wal_path = Path("data/email_sync.db-wal")
+    shm_path = Path("data/email_sync.db-shm")
+    try:
+        if action == "size":
+            def _size(p: Path) -> int:
+                return p.stat().st_size if p.exists() else 0
+            return {
+                "success": True,
+                "db_bytes": _size(db_path),
+                "wal_bytes": _size(wal_path),
+                "shm_bytes": _size(shm_path),
+            }
+        if action == "checkpoint":
+            if not db_path.exists():
+                return {"success": False, "error": "db file not found"}
+            subprocess.run(
+                ["sqlite3", str(db_path), "PRAGMA wal_checkpoint(TRUNCATE); VACUUM;"],
+                check=True,
+            )
+            return {"success": True, "message": "checkpoint + vacuum done"}
+        if action == "clear":
+            backup_dir = Path("data/db_backups")
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            import shutil, datetime
+            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            for f in [db_path, wal_path, shm_path]:
+                if f.exists():
+                    shutil.move(str(f), backup_dir / f"{f.name}.{ts}.bak")
+            return {"success": True, "message": "db cleared (backed up)"}
+        return {"success": False, "error": f"未知 db 操作: {action}"}
+    except Exception as exc:
+        return {"success": False, "error": str(exc)}
 
 
 def _print_accounts(result: Dict[str, Any]) -> None:

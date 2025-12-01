@@ -15,6 +15,7 @@ from .core.tool_schemas import (
     BATCH_MARK_READ_SCHEMA,
     DELETE_EMAIL_SCHEMA,
     DELETE_EMAILS_SCHEMA,
+    BATCH_DELETE_EMAILS_SCHEMA,
     SEARCH_EMAILS_SCHEMA,
     SEND_EMAIL_SCHEMA,
     REPLY_EMAIL_SCHEMA,
@@ -29,7 +30,8 @@ from .core.tool_schemas import (
     GET_CONTACT_TIMELINE_SCHEMA,
     LIST_UNREAD_FOLDERS_SCHEMA,
     GET_EMAIL_HEADERS_SCHEMA,
-    GET_RECENT_ACTIVITY_SCHEMA
+    GET_RECENT_ACTIVITY_SCHEMA,
+    GET_VERSION_SCHEMA
 )
 from .core.tool_handlers import ToolContext, EmailToolHandlers
 from .core.communication_handlers import CommunicationHandlers
@@ -150,7 +152,7 @@ class MCPTools:
         tool_registry.register(
             "batch_delete_emails",
             "Delete multiple emails (move to trash or permanently delete)",
-            DELETE_EMAILS_SCHEMA
+            BATCH_DELETE_EMAILS_SCHEMA
         )(batch_delete_handler)
         
         tool_registry.register(
@@ -247,6 +249,12 @@ class MCPTools:
             "List all configured email accounts",
             LIST_ACCOUNTS_SCHEMA
         )(SystemHandlers.handle_list_accounts)
+        
+        tool_registry.register(
+            "get_version",
+            "Get MCP Email Service version and git commit",
+            GET_VERSION_SCHEMA
+        )(SystemHandlers.handle_get_version)
         
         # Unified sync tool (optional dependency)
         try:

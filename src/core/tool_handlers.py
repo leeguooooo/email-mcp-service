@@ -6,6 +6,7 @@ import logging
 from typing import Dict, Any, List, Optional
 from ..account_manager import AccountManager
 from ..services.email_service import EmailService
+import sqlite3
 
 logger = logging.getLogger(__name__)
 
@@ -34,12 +35,13 @@ class EmailToolHandlers:
         """Handle list_emails tool"""
         try:
             result = ctx.email_service.list_emails(
-                limit=args.get('limit', 50),
-                unread_only=args.get('unread_only', False),
-                folder=args.get('folder', 'INBOX'),
+                limit=args.get('limit', 100),
+                unread_only=args.get('unread_only', True),
+                folder=args.get('folder', 'all'),
                 account_id=args.get('account_id'),
                 offset=args.get('offset', 0),
-                include_metadata=args.get('include_metadata', True)
+                include_metadata=args.get('include_metadata', True),
+                use_cache=args.get('use_cache', True)
             )
             
             if 'error' in result:
@@ -186,20 +188,47 @@ class EmailToolHandlers:
             return [{"type": "text", "text": ctx.get_message('no_email')}]
         
         response = []
+        if result.get('skip_summary'):
+            summary_needed = False
+        else:
+            summary_needed = True
+        
+        total_emails = result.get('total_emails', result.get('total_in_folder'))
+        total_unread = result.get('total_unread', result.get('unread_count'))
+        offset = result.get('offset')
         
         # Summary
-        if 'accounts_count' in result:
-            summary = ctx.get_message('found_emails', 
-                len(emails), 
-                result.get('total_emails', 0),
-                result.get('total_unread', 0)
-            )
-            response.append({"type": "text", "text": summary})
-            
-            if result['accounts_count'] > 0:
+        if summary_needed:
+            if 'accounts_count' in result:
+                summary = ctx.get_message(
+                    'found_emails',
+                    len(emails),
+                    total_emails or 0,
+                    total_unread or 0
+                )
+                if offset is not None:
+                    summary += f" (offset {offset})"
+                response.append({"type": "text", "text": summary})
+                
+                if result['accounts_count'] > 0:
+                    response.append({
+                        "type": "text",
+                        "text": ctx.get_message('from_accounts', result['accounts_count'])
+                    })
+            elif total_emails is not None or total_unread is not None:
+                summary = ctx.get_message(
+                    'found_emails',
+                    len(emails),
+                    total_emails or len(emails),
+                    total_unread or 0
+                )
+                if offset is not None:
+                    summary += f" (offset {offset})"
+                response.append({"type": "text", "text": summary})
+            elif offset is not None:
                 response.append({
                     "type": "text",
-                    "text": ctx.get_message('from_accounts', result['accounts_count'])
+                    "text": f"Showing {len(emails)} email(s) (offset {offset})"
                 })
         
         # Email list
@@ -214,6 +243,10 @@ class EmailToolHandlers:
             
             if 'account' in email:
                 email_info += f"\n  {ctx.get_message('account')}{email['account']}"
+            if email.get('folder'):
+                email_info += f"\n  Folder: {email['folder']}"
+            if email.get('source'):
+                email_info += f"\n  Source: {email['source']}"
             
             email_list.append(email_info)
         
@@ -290,7 +323,7 @@ class EmailToolHandlers:
         response.append({"type": "text", "text": summary})
         
         # Format emails similar to list
-        email_list_result = EmailToolHandlers._format_email_list({'emails': emails}, ctx)
+        email_list_result = EmailToolHandlers._format_email_list({'emails': emails, 'skip_summary': True}, ctx)
         
         # If email_list_result has summary, skip it; otherwise keep all items
         if len(email_list_result) > 1:

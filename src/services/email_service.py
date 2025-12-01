@@ -2,7 +2,9 @@
 Email service layer - Clean interface for email operations
 """
 import logging
+import sqlite3
 from typing import Dict, Any, List, Optional, Callable
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +20,11 @@ class EmailService:
             account_manager: AccountManager instance
         """
         self.account_manager = account_manager
+        try:
+            from ..config.paths import EMAIL_SYNC_DB
+            self._sync_db_path = Path(EMAIL_SYNC_DB)
+        except Exception:
+            self._sync_db_path = Path("data/email_sync.db")
     
     def _execute_with_parallel_fallback(
         self,
@@ -78,12 +85,13 @@ class EmailService:
     
     def list_emails(
         self,
-        limit: int = 50,
-        unread_only: bool = False,
-        folder: str = 'INBOX',
+        limit: int = 100,
+        unread_only: bool = True,
+        folder: str = 'all',
         account_id: Optional[str] = None,
         offset: int = 0,
-        include_metadata: bool = True
+        include_metadata: bool = True,
+        use_cache: bool = True
     ) -> Dict[str, Any]:
         """
         List emails from inbox
@@ -100,14 +108,31 @@ class EmailService:
             Dictionary containing emails list and metadata with 'success' field
         """
         try:
+            # Prefer direct cache read when requested
+            if use_cache:
+                cache_result = self._list_emails_from_cache(
+                    limit=limit,
+                    unread_only=unread_only,
+                    folder=folder,
+                    account_id=account_id,
+                    offset=offset
+                )
+                if cache_result is not None:
+                    return cache_result
+            
             # Import here to avoid circular dependencies
             from ..legacy_operations import fetch_emails
+            effective_folder = folder if folder and folder != 'all' else 'INBOX'
             
             # Check if we should use optimized fetch
-            if unread_only and not account_id and folder == 'INBOX' and offset == 0:
+            if unread_only and not account_id and effective_folder == 'INBOX' and offset == 0:
                 try:
                     from ..operations.optimized_fetch import fetch_all_providers_optimized
-                    result = fetch_all_providers_optimized(limit, unread_only)
+                    result = fetch_all_providers_optimized(
+                        limit, 
+                        unread_only,
+                        account_manager=self.account_manager
+                    )
                     result = self._ensure_success_field(result)
                     
                     # Add metadata if requested
@@ -121,7 +146,7 @@ class EmailService:
             
             # Fetch with offset applied (fetch more and slice)
             fetch_limit = limit + offset if offset > 0 else limit
-            result = fetch_emails(fetch_limit, unread_only, folder, account_id)
+            result = fetch_emails(fetch_limit, unread_only, effective_folder, account_id)
             result = self._ensure_success_field(result)
             
             # Apply pagination
@@ -141,6 +166,103 @@ class EmailService:
         except Exception as e:
             logger.error(f"List emails failed: {e}", exc_info=True)
             return {'error': str(e), 'success': False}
+
+    def _list_emails_from_cache(
+        self,
+        limit: int,
+        unread_only: bool,
+        folder: str,
+        account_id: Optional[str],
+        offset: int
+    ) -> Optional[Dict[str, Any]]:
+        """Read emails directly from sync cache DB to avoid IMAP."""
+        try:
+            if not self._sync_db_path.exists():
+                return None
+            
+            # Resolve account id if email is provided
+            resolved_account_id = None
+            if account_id:
+                acc = self.account_manager.get_account(account_id)
+                if not acc:
+                    return {'error': f'No email account configured for {account_id}', 'success': False}
+                resolved_account_id = acc.get('id')
+            
+            conn = sqlite3.connect(self._sync_db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            query = """
+                SELECT DISTINCT
+                    e.uid as id,
+                    e.uid as uid,
+                    e.subject,
+                    e.sender_email as "from",
+                    e.date_sent as date,
+                    e.is_read as is_read,
+                    e.has_attachments as has_attachments,
+                    e.account_id as account_id,
+                    COALESCE(a.email, e.account_id) as account,
+                    f.name as folder
+                FROM emails e
+                LEFT JOIN accounts a ON e.account_id = a.id
+                LEFT JOIN folders f ON e.folder_id = f.id
+                WHERE e.is_deleted = 0
+            """
+            params: List[Any] = []
+            
+            if resolved_account_id:
+                query += " AND e.account_id = ?"
+                params.append(resolved_account_id)
+            
+            if folder and folder != 'all':
+                query += " AND f.name = ?"
+                params.append(folder)
+            
+            if unread_only:
+                query += " AND e.is_read = 0"
+            
+            query += " ORDER BY e.date_sent DESC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+            
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            
+            emails = []
+            seen = set()
+            for row in rows:
+                dedup_key = (row['account_id'], row['uid'])
+                if dedup_key in seen:
+                    continue
+                seen.add(dedup_key)
+                emails.append({
+                    'id': row['id'],
+                    'uid': row['uid'],
+                    'subject': row['subject'] or 'No Subject',
+                    'from': row['from'] or '',
+                    'date': row['date'] or '',
+                    'unread': not row['is_read'],
+                    'has_attachments': bool(row['has_attachments']),
+                    'account_id': row['account_id'],
+                    'account': row['account'],
+                    'folder': row['folder'],
+                    'source': 'cache_sync_db'
+                })
+            
+            conn.close()
+            
+            return {
+                'emails': emails,
+                'total_emails': len(emails),
+                'total_unread': sum(1 for e in emails if e.get('unread')),
+                'accounts_count': 1 if resolved_account_id else len(self.account_manager.list_accounts()),
+                'offset': offset,
+                'limit': limit,
+                'from_cache': True
+            }
+        except Exception as exc:
+            logger.warning(f"Cache list failed, fallback to legacy: {exc}")
+            return None
     
     def get_email_detail(
         self,
@@ -209,6 +331,12 @@ class EmailService:
             conn_cache: Dict[str, ConnectionManager] = {}
             ops_cache: Dict[str, EmailOperations] = {}
             available_accounts = [acc['id'] for acc in self.account_manager.list_accounts() if acc.get('id')]
+            
+            if len(available_accounts) > 1 and not account_id and not email_accounts:
+                return {
+                    'success': False,
+                    'error': 'Multiple accounts configured; please specify account_id or email_accounts to avoid cross-account operations'
+                }
             
             def _get_email_ops(acc_id: str) -> EmailOperations:
                 if acc_id not in ops_cache:
@@ -373,6 +501,12 @@ class EmailService:
             
             available_accounts = [acc['id'] for acc in self.account_manager.list_accounts() if acc.get('id')]
             
+            if len(available_accounts) > 1 and not account_id and not email_accounts:
+                return {
+                    'success': False,
+                    'error': 'Multiple accounts configured; please specify account_id or email_accounts to avoid cross-account operations'
+                }
+            
             def _delete_single(email_id: str, fld: str, acc_id: Optional[str], trash_fld: str) -> Dict[str, Any]:
                 candidate_ids = []
                 if acc_id:
@@ -534,7 +668,8 @@ class EmailService:
                     folder=folder,
                     unread_only=unread_only,
                     limit=fetch_limit,
-                    account_id=account_id
+                    account_id=account_id,
+                    account_manager=self.account_manager
                 )
                 result = self._ensure_success_field(result)
                 
@@ -551,34 +686,78 @@ class EmailService:
                 from ..connection_manager import ConnectionManager
                 from ..operations.search_operations import SearchOperations
                 
-                account = self.account_manager.get_account(account_id)
-                if not account:
-                    return {'error': 'No email account configured', 'success': False}
-                    
-                conn_mgr = ConnectionManager(account)
-                search_ops = SearchOperations(conn_mgr)
-                
-                # Handle offset for fallback (fetch more and slice)
                 fetch_limit = limit + offset if offset > 0 else limit
-                result = search_ops.search_emails(
-                    query=query,
-                    search_in=search_in,
-                    date_from=date_from,
-                    date_to=date_to,
-                    folder=folder if folder != 'all' else 'INBOX',
-                    unread_only=unread_only,
-                    has_attachments=has_attachments,
-                    limit=fetch_limit
-                )
-                result = self._ensure_success_field(result)
                 
-                # Apply pagination if offset is used
-                if offset > 0 and 'emails' in result:
-                    result['emails'] = result['emails'][offset:offset + limit]
-                    result['offset'] = offset
-                    result['limit'] = limit
+                if account_id:
+                    account = self.account_manager.get_account(account_id)
+                    if not account:
+                        return {'error': 'No email account configured', 'success': False}
+                    accounts_to_search = [(account_id, account)]
+                else:
+                    accounts_to_search = []
+                    for acc in self.account_manager.list_accounts():
+                        acc_id = acc.get('id')
+                        if not acc_id:
+                            continue
+                        account = self.account_manager.get_account(acc_id)
+                        if account:
+                            accounts_to_search.append((acc_id, account))
+                    if not accounts_to_search:
+                        return {'error': 'No email account configured', 'success': False}
                 
-                return result
+                all_emails: List[Dict[str, Any]] = []
+                total_found = 0
+                failed_accounts = []
+                
+                for acc_id, account in accounts_to_search:
+                    try:
+                        conn_mgr = ConnectionManager(account)
+                        search_ops = SearchOperations(conn_mgr)
+                        acc_result = search_ops.search_emails(
+                            query=query,
+                            search_in=search_in,
+                            date_from=date_from,
+                            date_to=date_to,
+                            folder=folder if folder != 'all' else 'INBOX',
+                            unread_only=unread_only,
+                            has_attachments=has_attachments,
+                            limit=fetch_limit
+                        )
+                        if not acc_result.get('success', True):
+                            failed_accounts.append({'account_id': acc_id, 'error': acc_result.get('error')})
+                            continue
+                        acc_emails = acc_result.get('emails', [])
+                        total_found += acc_result.get('total_found', len(acc_emails))
+                        all_emails.extend(acc_emails)
+                    except Exception as exc:
+                        failed_accounts.append({'account_id': acc_id, 'error': str(exc)})
+                        continue
+                
+                # Sort combined results by date descending (best effort)
+                all_emails.sort(key=lambda x: x.get('date', ''), reverse=True)
+                
+                if offset > 0:
+                    sliced_emails = all_emails[offset:offset + limit]
+                else:
+                    sliced_emails = all_emails[:limit]
+                
+                combined_result: Dict[str, Any] = {
+                    'success': True,
+                    'emails': sliced_emails,
+                    'displayed': len(sliced_emails),
+                    'total_found': total_found or len(all_emails),
+                    'accounts_count': len(accounts_to_search),
+                    'offset': offset,
+                    'limit': limit
+                }
+                
+                if len(accounts_to_search) == 1:
+                    combined_result['account_id'] = accounts_to_search[0][0]
+                
+                if failed_accounts:
+                    combined_result['failed_accounts'] = failed_accounts
+                
+                return combined_result
                 
         except Exception as e:
             logger.error(f"Search emails failed: {e}", exc_info=True)

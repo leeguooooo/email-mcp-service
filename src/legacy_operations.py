@@ -11,9 +11,11 @@ from datetime import datetime
 import json
 from pathlib import Path
 import os
+from datetime import datetime
 
 from .connection_manager import ConnectionManager
 from .account_manager import AccountManager
+from .operations.cached_operations import CachedEmailOperations
 
 logger = logging.getLogger(__name__)
 
@@ -208,33 +210,91 @@ def fetch_emails(limit=50, unread_only=False, folder="INBOX", account_id=None, u
         use_cache: Try to use cached data from email_sync.db (default: False)
     """
     try:
+        resolved_account = None
+        if account_id:
+            resolved_account = account_manager.get_account(account_id)
+            if not resolved_account:
+                return {"error": f"No email account configured for {account_id}"}
+            # Use internal account ID for cache/DB lookups
+            account_id = resolved_account.get('id', account_id)
         # If no specific account, fetch from all accounts
         # CRITICAL: Must check this BEFORE trying cache, because cache only works for single account
         if account_id is None and account_manager.list_accounts():
+            if use_cache:
+                try:
+                    cache = CachedEmailOperations()
+                    if cache.is_available():
+                        accounts = account_manager.list_accounts()
+                        combined_emails = []
+                        accounts_info = []
+                        total_emails = 0
+                        total_unread = 0
+                        
+                        for acc in accounts:
+                            acc_id = acc['id']
+                            acc_email = acc.get('email')
+                            cached = cache.list_emails_cached(
+                                limit=limit,
+                                unread_only=unread_only,
+                                folder=folder,
+                                account_id=acc_id,
+                                max_age_minutes=60
+                            )
+                            if cached:
+                                emails = cached.get('emails', [])
+                                for em in emails:
+                                    em['account'] = acc_email
+                                    em['account_id'] = acc_id
+                                    em['source'] = 'cache_sync_db'
+                                combined_emails.extend(emails)
+                                accounts_info.append({
+                                    'account': acc_email,
+                                    'total': cached.get('total_in_folder', 0),
+                                    'unread': cached.get('unread_count', 0),
+                                    'fetched': len(emails)
+                                })
+                                total_emails += cached.get('total_in_folder', 0)
+                                total_unread += cached.get('unread_count', 0)
+                        if combined_emails:
+                            combined_emails.sort(key=lambda x: x.get('date', ''), reverse=True)
+                            combined_emails = combined_emails[:limit]
+                            return {
+                                'emails': combined_emails,
+                                'total_emails': total_emails,
+                                'total_unread': total_unread,
+                                'accounts_count': len(accounts),
+                                'accounts_info': accounts_info,
+                                'from_cache': True
+                            }
+                        else:
+                            return {'error': 'Cache empty for all accounts', 'success': False}
+                    logger.info("Cache unavailable or empty for multi-account, falling back to live fetch")
+                except Exception as exc:
+                    logger.warning(f"Cache read failed for multi-account: {exc}, falling back to live fetch")
             return fetch_emails_multi_account(limit, unread_only, folder, use_cache)
         
-        # Try cache first if requested (only for single account)
-        if use_cache and account_id is not None:
-            try:
-                from .operations.cached_operations import CachedEmailOperations
-                cache = CachedEmailOperations()
-                
-                if cache.is_available():
-                    logger.info(f"Using cached email data for account {account_id}")
-                    result = cache.list_emails_cached(
-                        limit=limit,
-                        unread_only=unread_only,
-                        folder=folder,
-                        account_id=account_id
-                    )
-                    # Cache returns None if expired/missing, or dict (even if emails=[]) if valid
-                    if result is not None:
-                        logger.info(f"Cache hit: {len(result.get('emails', []))} emails (age: {result.get('cache_age_minutes', 0):.1f} min)")
-                        return result
-                    else:
-                        logger.info("Cache miss or expired, falling back to live fetch")
-            except Exception as e:
-                logger.warning(f"Cache fetch failed, falling back to live IMAP: {e}")
+            # Try cache first if requested (only for single account)
+            if use_cache and account_id is not None:
+                try:
+                    from .operations.cached_operations import CachedEmailOperations
+                    cache = CachedEmailOperations()
+                    
+                    if cache.is_available():
+                        logger.info(f"Using cached email data for account {account_id}")
+                        result = cache.list_emails_cached(
+                            limit=limit,
+                            unread_only=unread_only,
+                            folder=folder,
+                            account_id=account_id
+                        )
+                        # Cache returns None if expired/missing, or dict (even if emails=[]) if valid
+                        if result is not None:
+                            logger.info(f"Cache hit: {len(result.get('emails', []))} emails (age: {result.get('cache_age_minutes', 0):.1f} min)")
+                            return result
+                        else:
+                            return {'error': 'Cache miss or expired', 'success': False}
+                except Exception as e:
+                    logger.warning(f"Cache fetch failed, falling back to live IMAP: {e}")
         
         # Single account fetch
         conn_mgr = get_connection_manager(account_id)

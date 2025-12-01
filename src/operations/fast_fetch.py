@@ -76,8 +76,18 @@ def fast_fetch_single_account(account_id: str, limit: int, unread_only: bool) ->
             'error': str(e)
         }
 
-def fast_fetch_all_accounts(limit: int = 50, unread_only: bool = True) -> Dict[str, Any]:
-    """Fast parallel fetch from all accounts"""
+def fast_fetch_all_accounts(limit: int = 50, unread_only: bool = True, account_manager=None) -> Dict[str, Any]:
+    """
+    Fast parallel fetch from all accounts
+    
+    Args:
+        limit: Maximum number of emails to return
+        unread_only: Only return unread emails
+        account_manager: Optional AccountManager instance to reuse (avoids re-reading config)
+    
+    Returns:
+        Combined results from all accounts
+    """
     # Check cache first
     cache_key = f"fast_fetch_{unread_only}_{limit}"
     cached = get_cached_result(cache_key)
@@ -85,7 +95,8 @@ def fast_fetch_all_accounts(limit: int = 50, unread_only: bool = True) -> Dict[s
         return cached
     
     start_time = datetime.now()
-    account_manager = AccountManager()
+    if account_manager is None:
+        account_manager = AccountManager()
     accounts = account_manager.list_accounts()
     
     if not accounts:

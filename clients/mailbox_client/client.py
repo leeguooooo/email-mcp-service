@@ -55,6 +55,8 @@ class MailboxClient:
         unread_only: bool = False,
         folder: str = "INBOX",
         account_id: Optional[str] = None,
+        offset: int = 0,
+        use_cache: bool = True,
     ) -> Dict[str, Any]:
         """List emails for the given mailbox scope."""
         try:
@@ -63,6 +65,8 @@ class MailboxClient:
                 unread_only=unread_only,
                 folder=folder,
                 account_id=account_id,
+                offset=offset,
+                use_cache=use_cache,
             )
         except Exception as exc:
             return {
@@ -74,6 +78,8 @@ class MailboxClient:
         normalized.setdefault("limit", limit)
         normalized.setdefault("unread_only", unread_only)
         normalized.setdefault("folder", folder)
+        normalized.setdefault("offset", offset)
+        normalized.setdefault("use_cache", use_cache)
         if account_id:
             normalized.setdefault("account_id", account_id)
         return normalized
@@ -108,6 +114,32 @@ class MailboxClient:
         normalized.setdefault("email_id", email_id)
         if account_id:
             normalized.setdefault("account_id", account_id)
+        return normalized
+
+    def search_emails(
+        self,
+        *,
+        query: str,
+        account_id: Optional[str] = None,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        limit: int = 50,
+        unread_only: bool = False,
+    ) -> Dict[str, Any]:
+        """Search emails via email_service (IMAP search)."""
+        try:
+            result = self.email_service.search_emails(
+                query=query,
+                account_id=account_id,
+                date_from=date_from,
+                date_to=date_to,
+                limit=limit,
+                unread_only=unread_only,
+            )
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
+        normalized = self._ensure_success(result)
+        normalized.setdefault("query", query)
         return normalized
 
     @staticmethod

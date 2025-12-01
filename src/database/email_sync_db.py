@@ -172,6 +172,8 @@ class EmailSyncDatabase:
             "CREATE INDEX IF NOT EXISTS idx_folders_account ON folders (account_id)",
             "CREATE INDEX IF NOT EXISTS idx_sync_history_account ON sync_history (account_id)",
             "CREATE INDEX IF NOT EXISTS idx_attachments_email ON attachments (email_id)",
+            # Unique index to prevent duplicate emails per account/folder/uid
+            "CREATE UNIQUE INDEX IF NOT EXISTS uniq_emails_account_folder_uid ON emails (account_id, folder_id, uid)"
         ]
         
         for index_sql in indexes:
@@ -196,16 +198,17 @@ class EmailSyncDatabase:
     
     def add_or_update_folder(self, account_id: str, folder_name: str, 
                            display_name: str = None, message_count: int = 0, 
-                           unread_count: int = 0) -> int:
+                           unread_count: int = 0, last_sync: Optional[str] = None) -> int:
         """添加或更新文件夹，返回文件夹ID"""
         with self._lock:
             try:
+                last_sync_value = last_sync or datetime.now().isoformat()
                 cursor = self.conn.execute("""
                     INSERT OR REPLACE INTO folders 
                     (account_id, name, display_name, message_count, unread_count, last_sync)
-                    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    VALUES (?, ?, ?, ?, ?, ?)
                 """, (account_id, folder_name, display_name or folder_name, 
-                      message_count, unread_count))
+                      message_count, unread_count, last_sync_value))
                 
                 self.conn.commit()
                 
@@ -268,6 +271,19 @@ class EmailSyncDatabase:
                     recipients, date_sent, is_read, is_flagged, has_attachments,
                     size_bytes, content_hash, sync_status
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced')
+                ON CONFLICT(account_id, folder_id, uid) DO UPDATE SET
+                    message_id=excluded.message_id,
+                    subject=excluded.subject,
+                    sender=excluded.sender,
+                    sender_email=excluded.sender_email,
+                    recipients=excluded.recipients,
+                    date_sent=excluded.date_sent,
+                    is_read=excluded.is_read,
+                    is_flagged=excluded.is_flagged,
+                    has_attachments=excluded.has_attachments,
+                    size_bytes=excluded.size_bytes,
+                    content_hash=excluded.content_hash,
+                    updated_at=CURRENT_TIMESTAMP
             """, (
                 email_data['account_id'],
                 email_data['folder_id'],
@@ -334,6 +350,20 @@ class EmailSyncDatabase:
             except sqlite3.Error as e:
                 logger.error(f"Failed to update account sync status for {account_id}: {e}")
                 return False
+    
+    def get_last_sync_time(self, account_id: str) -> Optional[datetime]:
+        """获取账户最后同步时间"""
+        try:
+            cursor = self.conn.execute(
+                "SELECT last_sync FROM accounts WHERE id = ?",
+                (account_id,)
+            )
+            row = cursor.fetchone()
+            if row and row['last_sync']:
+                return datetime.fromisoformat(row['last_sync'])
+        except Exception as e:
+            logger.warning(f"Failed to fetch last_sync for {account_id}: {e}")
+        return None
     
     def get_email_count_for_account(self, account_id: str) -> Optional[int]:
         """获取账户的邮件数量"""

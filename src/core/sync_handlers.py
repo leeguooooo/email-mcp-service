@@ -3,7 +3,7 @@
 """
 import logging
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .tool_handlers import ToolContext
 from ..background.sync_scheduler import get_scheduler
@@ -16,6 +16,21 @@ logger = logging.getLogger(__name__)
 
 class SyncHandlers:
     """同步工具处理器"""
+    
+    @staticmethod
+    def _to_local_timestr(dt_str: str) -> str:
+        """将ISO/SQLite时间字符串转换成本地时间显示"""
+        if not dt_str:
+            return "从未同步"
+        try:
+            dt = datetime.fromisoformat(dt_str)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc).astimezone()
+            else:
+                dt = dt.astimezone()
+            return dt.strftime('%m-%d %H:%M')
+        except Exception:
+            return dt_str
     
     @staticmethod
     def handle_sync_emails(args: Dict[str, Any], ctx: ToolContext) -> List[Dict[str, Any]]:
@@ -165,10 +180,7 @@ class SyncHandlers:
                 response_text += f"\n📧 账户信息 ({len(accounts)}个):\n"
                 for account in accounts[:5]:  # 最多显示5个账户
                     last_sync = account.get('last_sync')
-                    if last_sync:
-                        last_sync_str = datetime.fromisoformat(last_sync).strftime('%m-%d %H:%M')
-                    else:
-                        last_sync_str = "从未同步"
+                    last_sync_str = SyncHandlers._to_local_timestr(last_sync)
                     
                     response_text += f"• {account['email']}: {account.get('total_emails', 0)}封邮件, 最后同步: {last_sync_str}\n"
                 
@@ -192,7 +204,12 @@ class SyncHandlers:
                 response_text += f"\n⏰ 计划任务:\n"
                 for job in next_jobs[:3]:  # 最多显示3个任务
                     if job.get('next_run'):
-                        next_run = datetime.fromisoformat(job['next_run']).strftime('%m-%d %H:%M')
+                        try:
+                            next_dt = datetime.fromisoformat(job['next_run'])
+                            # next_run 是本地时间，保持本地显示
+                            next_run = next_dt.strftime('%m-%d %H:%M')
+                        except Exception:
+                            next_run = job['next_run']
                         response_text += f"• 下次同步: {next_run}\n"
                         break
             
@@ -202,8 +219,7 @@ class SyncHandlers:
                 response_text += f"\n🕐 最后同步:\n"
                 for sync_type, time_str in last_sync_times.items():
                     if time_str:
-                        time_formatted = datetime.fromisoformat(time_str).strftime('%m-%d %H:%M')
-                        response_text += f"• {sync_type}: {time_formatted}\n"
+                        response_text += f"• {sync_type}: {SyncHandlers._to_local_timestr(time_str)}\n"
             
             return [{"type": "text", "text": response_text}]
             
