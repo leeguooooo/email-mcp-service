@@ -126,6 +126,13 @@ After configuration, you can use email features directly in MCP clients (like Cl
    uv run python -m clients.mailbox_client list-emails --limit 10
    ```
 
+#### Default behavior (cache, sync, version)
+
+- `list_emails` defaults to **cache** (`use_cache=true`) with `limit=100` and `folder=all`. Set `use_cache=false` to hit live IMAP, and adjust `limit` as needed.
+- Local cache is de-duplicated via unique key `(account_id, folder_id, uid)` with upsert; cache queries also use `DISTINCT` to avoid repeats.
+- Sync scheduler times are shown in **local time**; intervals support **5-minute** cadence. Use `sync_emails status` / `force` to inspect or trigger sync.
+- Service version comes from `src/config/version.py` and is exposed via the MCP `get_version` tool and the CLI “Version” menu.
+
 ## Main Features
 
 > **Note**: The following commands are used within MCP clients (like Claude Desktop), not as command-line commands.
@@ -225,6 +232,8 @@ A standalone CLI lives under `clients/mailbox_client`, allowing you to browse em
 uv run python -m clients.mailbox_client
 ```
 
+Interactive menu now covers: list/search emails, sync status/force sync, health, version, and DB maintenance (vacuum/clear cache). Listing defaults to cache with limit 100; pass `--limit` to expand or `--use-cache false` to hit live IMAP.
+
 ### Command-line Mode (For scripting)
 ```bash
 uv run python -m clients.mailbox_client list-accounts
@@ -247,13 +256,14 @@ Each command accepts `--json` for machine-readable output. See [clients/mailbox_
 1. **Login Failed**: 163/QQ Mail use authorization codes, Gmail uses app passwords
 2. **Can't Find Emails**: Default shows unread only, use `unread_only=false`
 3. **Connection Timeout**: Check network and firewall settings
+4. **Duplicates or stale cache**: Cache uses unique key `(account_id, folder_id, uid)` with upsert; if DB is corrupted, remove `data/email_sync.db` and re-sync. Use `sync_emails status` to confirm scheduler (local time, 5-minute cadence supported).
 
 ### AI Monitoring Issues
-4. **AI Filtering Failed**: System automatically falls back to keyword filtering if AI API fails
-5. **Webhook Not Working**: Verify webhook URL and test with `python scripts/test_lark_webhook.py`
-6. **n8n Workflow Errors**: Check environment variables (`FEISHU_WEBHOOK`, `OPENAI_API_KEY`)
-7. **Script Permission Denied**: Run `chmod +x scripts/*.py` to make scripts executable
-8. **No Notifications**: Check notification config and test with `python scripts/notification_service.py test`
+5. **AI Filtering Failed**: System automatically falls back to keyword filtering if AI API fails
+6. **Webhook Not Working**: Verify webhook URL and test with `python scripts/test_lark_webhook.py`
+7. **n8n Workflow Errors**: Check environment variables (`FEISHU_WEBHOOK`, `OPENAI_API_KEY`)
+8. **Script Permission Denied**: Run `chmod +x scripts/*.py` to make scripts executable
+9. **No Notifications**: Check notification config and test with `python scripts/notification_service.py test`
 
 ### Quick Diagnostics
 ```bash

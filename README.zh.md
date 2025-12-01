@@ -132,6 +132,13 @@ uv run python scripts/init_sync.py daemon
    uv run python -m clients.mailbox_client list-emails --limit 10
    ```
 
+#### 默认行为（缓存 / 同步 / 版本）
+
+- `list_emails` 默认读取本地缓存（`use_cache=true`），`limit=100`、`folder=all`。若需直连 IMAP，可设置 `use_cache=false` 并自行调整 `limit`。
+- 缓存通过 `(account_id, folder_id, uid)` 唯一索引 + upsert 去重，查询也会 `DISTINCT`，避免重复。
+- 同步状态展示为本地时间，支持 **5 分钟** 间隔；用 `sync_emails status` / `force` 查看或触发同步。
+- 版本信息位于 `src/config/version.py`，可通过 MCP `get_version` 或 CLI “版本”菜单查看。
+
 ## 主要功能
 
 > **注意**：以下命令需要在 MCP 客户端（如 Claude Desktop）中使用，不是命令行命令。
@@ -233,6 +240,8 @@ sync_emails with action="stop"
 uv run python -m clients.mailbox_client
 ```
 
+交互式菜单已涵盖：查看/搜索邮件、同步状态/强制同步、健康检查、版本查看、数据库维护（清空/压缩）。列表默认使用缓存并显示 100 封，可用 `--limit` 扩大或 `--use-cache false` 直连 IMAP。
+
 ### 📋 命令行模式（适合脚本）
 ```bash
 uv run python -m clients.mailbox_client list-accounts
@@ -247,6 +256,7 @@ uv run python -m clients.mailbox_client show-email 123456 --account-id my_accoun
 1. **登录失败**：163/QQ邮箱使用授权码，Gmail使用应用密码
 2. **找不到邮件**：默认只显示未读，使用 `unread_only=false`
 3. **连接超时**：检查网络和防火墙设置
+4. **重复或缓存异常**：缓存唯一键 `(account_id, folder_id, uid)` 已去重；如库损坏，可删除 `data/email_sync.db` 后重新同步，并用 `sync_emails status` 确认调度（本地时间，支持 5 分钟间隔）。
 
 ## 项目结构
 
