@@ -150,6 +150,9 @@ class EmailSyncManager:
         
         sync_time = (datetime.now() - start_time).total_seconds()
         
+        # 防止 WAL 无限累积，完成全局同步后尝试收缩
+        self._checkpoint_wal_safe(truncate=True, threshold_mb=256)
+        
         return {
             'success': successful_accounts > 0,
             'accounts_synced': successful_accounts,
@@ -257,6 +260,9 @@ class EmailSyncManager:
                 'account_id': account_id,
                 'error': error_msg
             }
+        finally:
+            # 单账户同步时也进行 WAL 收缩，防止 -wal 文件膨胀
+            self._checkpoint_wal_safe(truncate=False, threshold_mb=256)
     
     def _get_account_folders(self, mail, account_id: str) -> List[str]:
         """获取账户的所有文件夹"""
@@ -630,6 +636,13 @@ class EmailSyncManager:
     def get_recent_emails(self, account_id: str = None, limit: int = 50) -> List[Dict[str, Any]]:
         """获取最近邮件"""
         return self.db.get_recent_emails(account_id, limit)
+    
+    def _checkpoint_wal_safe(self, truncate: bool, threshold_mb: int):
+        """Best-effort WAL checkpoint，避免异常抛出影响业务流程"""
+        try:
+            self.db.checkpoint_wal(truncate=truncate, wal_size_mb_threshold=threshold_mb)
+        except Exception:
+            logger.debug("Skip WAL checkpoint due to error", exc_info=True)
     
     def close(self):
         """关闭同步管理器"""

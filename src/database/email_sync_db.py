@@ -39,8 +39,16 @@ class EmailSyncDatabase:
         
         # 启用WAL模式提高并发性能
         self.conn.execute("PRAGMA journal_mode=WAL")
+        # 控制 WAL 增长，尽早触发 checkpoint 并设置大小上限（默认 512MB）
+        self.conn.execute("PRAGMA wal_autocheckpoint=500")
+        self.conn.execute("PRAGMA journal_size_limit=536870912")
         self.conn.execute("PRAGMA synchronous=NORMAL")
         self.conn.execute("PRAGMA cache_size=10000")
+        # 如果存在遗留的超大 WAL，初始化时立即收缩一次
+        try:
+            self.checkpoint_wal(truncate=True, wal_size_mb_threshold=512)
+        except Exception as e:
+            logger.warning(f"Initial WAL checkpoint skipped: {e}")
         
         logger.info(f"Database initialized at {self.db_path}")
     
@@ -497,10 +505,49 @@ class EmailSyncDatabase:
         except sqlite3.Error as e:
             logger.error(f"Failed to delete email: {e}")
             return False
+
+    def checkpoint_wal(self, truncate: bool = False, wal_size_mb_threshold: int = 512) -> Optional[Dict[str, Any]]:
+        """
+        对 WAL 进行 checkpoint，防止 email_sync.db-wal 无限制增长。
+
+        Args:
+            truncate: 使用 TRUNCATE 模式强制收缩 WAL。
+            wal_size_mb_threshold: 仅当 WAL 大于该阈值时触发（MB），force 时忽略。
+        """
+        wal_path = Path(f"{self.db_path}-wal")
+        if not wal_path.exists():
+            return None
+
+        wal_mb = wal_path.stat().st_size / (1024 * 1024)
+        if not truncate and wal_mb < wal_size_mb_threshold:
+            return None
+
+        mode = "TRUNCATE" if truncate or wal_mb >= wal_size_mb_threshold else "PASSIVE"
+        with self._lock:
+            try:
+                result = self.conn.execute(f"PRAGMA wal_checkpoint({mode})").fetchone()
+                # WAL checkpoint 后顺便优化索引页
+                self.conn.execute("PRAGMA optimize")
+                logger.info(
+                    f"WAL checkpoint ({mode}) executed: wal_size_mb={wal_mb:.1f}, result={result}"
+                )
+                return {
+                    "mode": mode,
+                    "wal_size_mb": wal_mb,
+                    "result": tuple(result) if result else None
+                }
+            except sqlite3.Error as e:
+                logger.warning(f"Failed to checkpoint WAL ({mode}): {e}")
+                return None
     
     def close(self):
         """关闭数据库连接"""
         if self.conn:
+            # 尝试在关闭前收缩 WAL，防止下次启动看到巨大的 -wal 文件
+            try:
+                self.checkpoint_wal(truncate=True, wal_size_mb_threshold=0)
+            except Exception:
+                logger.debug("WAL checkpoint on close skipped due to error", exc_info=True)
             self.conn.close()
             self.conn = None
     
