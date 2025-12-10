@@ -490,10 +490,25 @@ def get_email_detail(email_id, folder="INBOX", account_id=None):
     try:
         conn_mgr = get_connection_manager(account_id)
         mail = conn_mgr.connect_imap()
-        selected_folder = _normalize_folder_name(folder)
-        result, data = mail.select(selected_folder)
-        if result != 'OK':
-            raise ValueError(f"Cannot select folder '{folder}': {data}")
+        # 优先使用指定文件夹，Gmail 账户若失败则回退到 [Gmail]/All Mail
+        folders_to_try = [folder or "INBOX"]
+        if conn_mgr.provider == "gmail":
+            normalized = _normalize_folder_name(folder)
+            if "All Mail" not in str(normalized):  # 避免重复添加
+                folders_to_try.append("[Gmail]/All Mail")
+        
+        last_error = None
+        selected_folder = None
+        for candidate in folders_to_try:
+            selected_folder = _normalize_folder_name(candidate)
+            result, data = mail.select(selected_folder)
+            if result == 'OK':
+                break
+            last_error = f"Cannot select folder '{candidate}': {data}"
+            selected_folder = None
+        
+        if not selected_folder:
+            raise ValueError(last_error or f"Cannot select folder '{folder}'")
         
         # Ensure email_id is a string
         if isinstance(email_id, int):
@@ -609,10 +624,25 @@ def mark_email_read(email_id, folder="INBOX", account_id=None):
     try:
         conn_mgr = get_connection_manager(account_id)
         mail = conn_mgr.connect_imap()
-        selected_folder = _normalize_folder_name(folder)
-        result, data = mail.select(selected_folder)
-        if result != 'OK':
-            raise ValueError(f"Cannot select folder '{folder}': {data}")
+        # 优先使用指定文件夹，Gmail 账户若失败则回退到 [Gmail]/All Mail
+        folders_to_try = [folder or "INBOX"]
+        if conn_mgr.provider == "gmail":
+            normalized = _normalize_folder_name(folder)
+            if "All Mail" not in str(normalized):  # 避免重复添加
+                folders_to_try.append("[Gmail]/All Mail")
+        
+        last_error = None
+        selected_folder = None
+        for candidate in folders_to_try:
+            selected_folder = _normalize_folder_name(candidate)
+            result, data = mail.select(selected_folder)
+            if result == 'OK':
+                break
+            last_error = f"Cannot select folder '{candidate}': {data}"
+            selected_folder = None
+        
+        if not selected_folder:
+            raise ValueError(last_error or f"Cannot select folder '{folder}'")
         
         # Ensure email_id is a string
         if isinstance(email_id, int):
@@ -647,10 +677,25 @@ def delete_email(email_id, folder="INBOX", account_id=None):
     try:
         conn_mgr = get_connection_manager(account_id)
         mail = conn_mgr.connect_imap()
-        selected_folder = _normalize_folder_name(folder)
-        result, data = mail.select(selected_folder)
-        if result != 'OK':
-            raise ValueError(f"Cannot select folder '{folder}': {data}")
+        # 优先使用指定文件夹，Gmail 账户若失败则回退到 [Gmail]/All Mail
+        folders_to_try = [folder or "INBOX"]
+        if conn_mgr.provider == "gmail":
+            normalized = _normalize_folder_name(folder)
+            if "All Mail" not in str(normalized):  # 避免重复添加
+                folders_to_try.append("[Gmail]/All Mail")
+        
+        last_error = None
+        selected_folder = None
+        for candidate in folders_to_try:
+            selected_folder = _normalize_folder_name(candidate)
+            result, data = mail.select(selected_folder)
+            if result == 'OK':
+                break
+            last_error = f"Cannot select folder '{candidate}': {data}"
+            selected_folder = None
+        
+        if not selected_folder:
+            raise ValueError(last_error or f"Cannot select folder '{folder}'")
         
         # Ensure email_id is a string
         if isinstance(email_id, int):
@@ -688,10 +733,25 @@ def move_email_to_trash(email_id, folder="INBOX", trash_folder="Trash", account_
         conn_mgr = get_connection_manager(account_id)
         mail = conn_mgr.connect_imap()
         
-        selected_folder = _normalize_folder_name(folder)
-        result, data = mail.select(selected_folder)
-        if result != 'OK':
-            raise ValueError(f"Cannot select folder '{folder}': {data}")
+        # 优先使用指定文件夹，Gmail 账户若失败则回退到 [Gmail]/All Mail
+        folders_to_try = [folder or "INBOX"]
+        if conn_mgr.provider == "gmail":
+            normalized = _normalize_folder_name(folder)
+            if "All Mail" not in str(normalized):  # 避免重复添加
+                folders_to_try.append("[Gmail]/All Mail")
+        
+        last_error = None
+        selected_folder = None
+        for candidate in folders_to_try:
+            selected_folder = _normalize_folder_name(candidate)
+            result, data = mail.select(selected_folder)
+            if result == 'OK':
+                break
+            last_error = f"Cannot select folder '{candidate}': {data}"
+            selected_folder = None
+        
+        if not selected_folder:
+            raise ValueError(last_error or f"Cannot select folder '{folder}'")
         
         target_folder = _normalize_folder_name(trash_folder)
 
@@ -747,10 +807,25 @@ def batch_move_to_trash(email_ids, folder="INBOX", trash_folder="Trash", account
         conn_mgr = get_connection_manager(account_id)
         mail = conn_mgr.connect_imap()
         
-        selected_folder = _normalize_folder_name(folder)
-        result, data = mail.select(selected_folder)
-        if result != 'OK':
-            raise ValueError(f"Cannot select folder '{folder}': {data}")
+        # 优先使用指定文件夹，Gmail 账户若失败则回退到 [Gmail]/All Mail
+        folders_to_try = [folder or "INBOX"]
+        if conn_mgr.provider == "gmail":
+            normalized = _normalize_folder_name(folder)
+            if "All Mail" not in str(normalized):  # 避免重复添加
+                folders_to_try.append("[Gmail]/All Mail")
+        
+        last_error = None
+        selected_folder = None
+        for candidate in folders_to_try:
+            selected_folder = _normalize_folder_name(candidate)
+            result, data = mail.select(selected_folder)
+            if result == 'OK':
+                break
+            last_error = f"Cannot select folder '{candidate}': {data}"
+            selected_folder = None
+        
+        if not selected_folder:
+            raise ValueError(last_error or f"Cannot select folder '{folder}'")
         
         target_folder = _normalize_folder_name(trash_folder)
 
@@ -946,10 +1021,25 @@ def _batch_delete_emails_shared_connection(email_ids, folder="INBOX", account_id
         conn_mgr = get_connection_manager(account_id)
         mail = conn_mgr.connect_imap()
         
-        selected_folder = _normalize_folder_name(folder)
-        result, data = mail.select(selected_folder)
-        if result != 'OK':
-            raise ValueError(f"Cannot select folder '{folder}': {data}")
+        # 优先使用指定文件夹，Gmail 账户若失败则回退到 [Gmail]/All Mail
+        folders_to_try = [folder or "INBOX"]
+        if conn_mgr.provider == "gmail":
+            normalized = _normalize_folder_name(folder)
+            if "All Mail" not in str(normalized):  # 避免重复添加
+                folders_to_try.append("[Gmail]/All Mail")
+        
+        last_error = None
+        selected_folder = None
+        for candidate in folders_to_try:
+            selected_folder = _normalize_folder_name(candidate)
+            result, data = mail.select(selected_folder)
+            if result == 'OK':
+                break
+            last_error = f"Cannot select folder '{candidate}': {data}"
+            selected_folder = None
+        
+        if not selected_folder:
+            raise ValueError(last_error or f"Cannot select folder '{folder}'")
         
         deleted_count = 0
         failed_ids = []
@@ -1024,10 +1114,25 @@ def batch_mark_read(email_ids, folder="INBOX", account_id=None):
         conn_mgr = get_connection_manager(account_id)
         mail = conn_mgr.connect_imap()
         
-        selected_folder = _normalize_folder_name(folder)
-        result, data = mail.select(selected_folder)
-        if result != 'OK':
-            raise ValueError(f"Cannot select folder '{folder}': {data}")
+        # 优先使用指定文件夹，Gmail 账户若失败则回退到 [Gmail]/All Mail
+        folders_to_try = [folder or "INBOX"]
+        if conn_mgr.provider == "gmail":
+            normalized = _normalize_folder_name(folder)
+            if "All Mail" not in str(normalized):  # 避免重复添加
+                folders_to_try.append("[Gmail]/All Mail")
+        
+        last_error = None
+        selected_folder = None
+        for candidate in folders_to_try:
+            selected_folder = _normalize_folder_name(candidate)
+            result, data = mail.select(selected_folder)
+            if result == 'OK':
+                break
+            last_error = f"Cannot select folder '{candidate}': {data}"
+            selected_folder = None
+        
+        if not selected_folder:
+            raise ValueError(last_error or f"Cannot select folder '{folder}'")
         
         marked_count = 0
         failed_ids = []
