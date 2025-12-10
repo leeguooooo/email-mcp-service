@@ -118,7 +118,7 @@ class EmailService:
                     offset=offset
                 )
                 if cache_result is not None:
-                    return cache_result
+                    return self._ensure_success_field(cache_result)
             
             # Import here to avoid circular dependencies
             from ..legacy_operations import fetch_emails

@@ -3,6 +3,7 @@ Legacy operations from original main.py
 Preserved for backward compatibility
 """
 import imaplib
+import sqlite3
 import email
 from email.header import decode_header
 import logging
@@ -61,6 +62,54 @@ def decode_mime_words(s):
     return result
 
 def safe_parse_email(raw_email: bytes) -> email.message.Message:
+
+
+def _get_sync_db_path() -> Path:
+    """Locate sync cache DB path (best-effort)."""
+    try:
+        from .config.paths import EMAIL_SYNC_DB
+        return Path(EMAIL_SYNC_DB)
+    except Exception:
+        return Path("data/email_sync.db")
+
+
+def _lookup_message_id_from_sync_db(account_id: str, uid: str):
+    """Best-effort lookup of Message-ID from local sync DB by account/uid."""
+    db_path = _get_sync_db_path()
+    if not db_path.exists():
+        return None
+    try:
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute(
+            "SELECT message_id FROM emails WHERE account_id = ? AND uid = ? ORDER BY id DESC LIMIT 1",
+            (account_id, str(uid)),
+        )
+        row = cursor.fetchone()
+        conn.close()
+        if row and row[0]:
+            return row[0]
+    except Exception:
+        pass
+    return None
+
+
+def _mark_sync_cache_read(account_id: str, uid: str):
+    """Best-effort mark local sync cache as read for given account/uid."""
+    db_path = _get_sync_db_path()
+    if not db_path.exists():
+        return
+    try:
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "UPDATE emails SET is_read = 1, updated_at = CURRENT_TIMESTAMP WHERE account_id = ? AND uid = ?",
+            (account_id, str(uid)),
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        return
     """
     安全地解析邮件，支持编码容错
     
@@ -649,14 +698,36 @@ def mark_email_read(email_id, folder="INBOX", account_id=None):
             email_id = str(email_id)
         
         flags_to_add = r'(\Seen)'
-        # Try UID first, fallback to sequence number
+        success = False
         result, data = mail.uid('store', email_id, '+FLAGS', flags_to_add)
-        if result != 'OK':
-            logger.warning(f"UID store failed for {email_id}, trying sequence number")
+        if result == 'OK' and data and data[0]:
+            success = True
+        else:
+            logger.warning(f"UID store failed or empty response for {email_id}, trying sequence number")
             result, data = mail.store(email_id, '+FLAGS', flags_to_add)
+            success = result == 'OK' and data and data[0]
         
-        if result != 'OK':
+        # Gmail UID 可能因标签不同而不匹配，尝试根据 Message-ID 搜索再标记
+        if not success and conn_mgr.provider == "gmail":
+            msg_id = _lookup_message_id_from_sync_db(conn_mgr.account_id, email_id)
+            if msg_id:
+                try:
+                    search_result, search_data = mail.uid('search', None, f'HEADER Message-ID "{msg_id}"')
+                    if search_result == 'OK' and search_data and search_data[0]:
+                        uid_list = search_data[0].split()
+                        if uid_list:
+                            alt_uid = uid_list[0].decode() if isinstance(uid_list[0], bytes) else uid_list[0]
+                            logger.info(f"Found UID via Message-ID search: {alt_uid} for msgid={msg_id}")
+                            result, data = mail.uid('store', alt_uid, '+FLAGS', flags_to_add)
+                            success = result == 'OK' and data and data[0]
+                except Exception as search_exc:
+                    logger.warning(f"Gmail Message-ID search failed: {search_exc}")
+        
+        if not success:
             raise Exception(f"Failed to mark email {email_id} as read")
+        
+        # Best-effort update local sync cache
+        _mark_sync_cache_read(conn_mgr.account_id, email_id)
         
         return {"success": True, "message": "Email marked as read", "account": conn_mgr.email}
         
