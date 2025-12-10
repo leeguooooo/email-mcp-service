@@ -9,6 +9,7 @@ from datetime import datetime
 
 from ..connection_manager import ConnectionManager
 from ..account_manager import AccountManager
+from ..legacy_operations import _close_mail_safely
 
 logger = logging.getLogger(__name__)
 
@@ -265,8 +266,7 @@ class ParallelBatchOperations:
                 return result_data
                 
             finally:
-                mail.close()
-                mail.logout()
+                _close_mail_safely(mail)
                 
         except Exception as e:
             logger.error(f"Batch delete failed: {e}")
@@ -343,8 +343,7 @@ class ParallelBatchOperations:
                 return result_data
                 
             finally:
-                mail.close()
-                mail.logout()
+                _close_mail_safely(mail)
                 
         except Exception as e:
             logger.error(f"Batch mark failed: {e}")
@@ -422,8 +421,7 @@ class ParallelBatchOperations:
                 return result_data
                 
             finally:
-                mail.close()
-                mail.logout()
+                _close_mail_safely(mail)
                 
         except Exception as e:
             logger.error(f"Batch move failed: {e}")

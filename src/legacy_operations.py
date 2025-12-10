@@ -62,8 +62,37 @@ def decode_mime_words(s):
     return result
 
 def safe_parse_email(raw_email: bytes) -> email.message.Message:
+    """
+    安全地解析邮件，支持编码容错
+    """
+    try:
+        return email.message_from_bytes(raw_email)
+    except (LookupError, UnicodeDecodeError) as e:
+        logger.warning(f"Email parsing failed with encoding error: {e}, using latin-1 fallback")
+        try:
+            text = raw_email.decode('latin-1', errors='replace')
+            return email.message_from_string(text)
+        except Exception as fallback_error:
+            logger.error(f"Failed to parse email even with fallback: {fallback_error}")
+            raise
+
+# Parse raw email safely
 
 
+def _close_mail_safely(mail):
+    """Best-effort IMAP cleanup; tolerate AUTH state."""
+    try:
+        if mail is None:
+            return
+        state = getattr(mail, "state", None)
+        if state == "SELECTED":
+            try:
+                mail.close()
+            except Exception:
+                pass
+        mail.logout()
+    except Exception as exc:
+        logger.warning(f"Error closing IMAP connection: {exc}")
 def _get_sync_db_path() -> Path:
     """Locate sync cache DB path (best-effort)."""
     try:
@@ -699,6 +728,9 @@ def mark_email_read(email_id, folder="INBOX", account_id=None):
         
         flags_to_add = r'(\Seen)'
         success = False
+        msg_id = _lookup_message_id_from_sync_db(conn_mgr.account_id, email_id) if conn_mgr.provider == "gmail" else None
+
+        # 尝试在选中的文件夹直接用 UID/sequence 设为已读
         result, data = mail.uid('store', email_id, '+FLAGS', flags_to_add)
         if result == 'OK' and data and data[0]:
             success = True
@@ -706,22 +738,22 @@ def mark_email_read(email_id, folder="INBOX", account_id=None):
             logger.warning(f"UID store failed or empty response for {email_id}, trying sequence number")
             result, data = mail.store(email_id, '+FLAGS', flags_to_add)
             success = result == 'OK' and data and data[0]
-        
-        # Gmail UID 可能因标签不同而不匹配，尝试根据 Message-ID 搜索再标记
-        if not success and conn_mgr.provider == "gmail":
-            msg_id = _lookup_message_id_from_sync_db(conn_mgr.account_id, email_id)
-            if msg_id:
-                try:
-                    search_result, search_data = mail.uid('search', None, f'HEADER Message-ID "{msg_id}"')
-                    if search_result == 'OK' and search_data and search_data[0]:
-                        uid_list = search_data[0].split()
-                        if uid_list:
-                            alt_uid = uid_list[0].decode() if isinstance(uid_list[0], bytes) else uid_list[0]
-                            logger.info(f"Found UID via Message-ID search: {alt_uid} for msgid={msg_id}")
-                            result, data = mail.uid('store', alt_uid, '+FLAGS', flags_to_add)
-                            success = result == 'OK' and data and data[0]
-                except Exception as search_exc:
-                    logger.warning(f"Gmail Message-ID search failed: {search_exc}")
+
+        # Gmail 特殊处理：UID 可能因标签不同而不匹配，基于 Message-ID 再搜一遍（当前文件夹）
+        if not success and conn_mgr.provider == "gmail" and msg_id:
+            try:
+                search_result, search_data = mail.uid('search', None, f'HEADER Message-ID "{msg_id}"')
+                if search_result == 'OK' and search_data and search_data[0]:
+                    uid_list = search_data[0].split()
+                    for alt_uid in uid_list:
+                        alt_uid_decoded = alt_uid.decode() if isinstance(alt_uid, bytes) else alt_uid
+                        result, data = mail.uid('store', alt_uid_decoded, '+FLAGS', flags_to_add)
+                        if result == 'OK' and data and data[0]:
+                            logger.info(f"Marked via Message-ID search UID={alt_uid_decoded} msgid={msg_id}")
+                            success = True
+                            break
+            except Exception as search_exc:
+                logger.warning(f"Gmail Message-ID search failed: {search_exc}")
         
         if not success:
             raise Exception(f"Failed to mark email {email_id} as read")
@@ -738,8 +770,7 @@ def mark_email_read(email_id, folder="INBOX", account_id=None):
     finally:
         try:
             if 'mail' in locals():
-                mail.close()
-                mail.logout()
+                _close_mail_safely(mail)
         except Exception as e:
             logger.warning(f"Error closing IMAP connection in mark_email_read: {e}")
 
@@ -793,8 +824,7 @@ def delete_email(email_id, folder="INBOX", account_id=None):
     finally:
         try:
             if 'mail' in locals():
-                mail.close()
-                mail.logout()
+                _close_mail_safely(mail)
         except Exception as e:
             logger.warning(f"Error closing IMAP connection in delete_email: {e}")
 
@@ -867,8 +897,7 @@ def move_email_to_trash(email_id, folder="INBOX", trash_folder="Trash", account_
     finally:
         try:
             if 'mail' in locals():
-                mail.close()
-                mail.logout()
+                _close_mail_safely(mail)
         except Exception as e:
             logger.warning(f"Error closing IMAP connection in move_email_to_trash: {e}")
 
@@ -1002,8 +1031,7 @@ def batch_move_to_trash(email_ids, folder="INBOX", trash_folder="Trash", account
     finally:
         try:
             if 'mail' in locals():
-                mail.close()
-                mail.logout()
+                _close_mail_safely(mail)
         except Exception as e:
             logger.warning(f"Error closing IMAP connection in batch_move_to_trash: {e}")
 
@@ -1174,8 +1202,7 @@ def _batch_delete_emails_shared_connection(email_ids, folder="INBOX", account_id
     finally:
         try:
             if 'mail' in locals():
-                mail.close()
-                mail.logout()
+                _close_mail_safely(mail)
         except Exception as e:
             logger.warning(f"Error closing IMAP connection in batch_delete_emails: {e}")
 
@@ -1245,7 +1272,6 @@ def batch_mark_read(email_ids, folder="INBOX", account_id=None):
     finally:
         try:
             if 'mail' in locals():
-                mail.close()
-                mail.logout()
+                _close_mail_safely(mail)
         except Exception as e:
             logger.warning(f"Error closing IMAP connection in batch_mark_read: {e}")

@@ -331,6 +331,16 @@ class EmailService:
             conn_cache: Dict[str, ConnectionManager] = {}
             ops_cache: Dict[str, EmailOperations] = {}
             available_accounts = [acc['id'] for acc in self.account_manager.list_accounts() if acc.get('id')]
+
+            # Gmail 在并行批量操作下容易因文件夹/UID 不一致而失败，强制串行处理
+            account_provider = None
+            if account_id:
+                try:
+                    acc_obj = self.account_manager.get_account(account_id)
+                    account_provider = acc_obj.get('provider') if acc_obj else None
+                except Exception:
+                    account_provider = None
+            force_sequential_mark = account_provider == 'gmail'
             
             if len(available_accounts) > 1 and not account_id and not email_accounts:
                 return {
@@ -439,7 +449,7 @@ class EmailService:
                 }
             
             # Multiple emails - prefer parallel when account_id is known
-            if len(email_ids) > 1:
+            if len(email_ids) > 1 and not force_sequential_mark:
                 try:
                     from ..operations.parallel_operations import parallel_ops, batch_ops
                     result = parallel_ops.execute_batch_operation(
@@ -460,6 +470,13 @@ class EmailService:
         except Exception as e:
             logger.error(f"Mark emails failed: {e}", exc_info=True)
             return {'error': str(e), 'success': False}
+        finally:
+            # 变更了邮件阅读状态，清空搜索缓存避免短期内读到旧数据
+            try:
+                from ..operations.optimized_search import clear_search_cache
+                clear_search_cache()
+            except Exception:
+                logger.debug("Failed to clear search cache after mark_emails", exc_info=True)
     
     def delete_emails(
         self,

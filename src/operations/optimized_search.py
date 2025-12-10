@@ -20,6 +20,12 @@ _search_cache = {}
 _cache_timestamps = {}
 CACHE_TTL_SECONDS = 60  # 60 seconds cache
 
+
+def clear_search_cache():
+    """Clear in-memory search cache (used after mutations)."""
+    _search_cache.clear()
+    _cache_timestamps.clear()
+
 def get_cache_key(params: Dict[str, Any]) -> str:
     """Generate cache key from search parameters"""
     # Sort params for consistent key generation
