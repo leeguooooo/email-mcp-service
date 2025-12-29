@@ -54,7 +54,10 @@ class EmailOperations:
                     raise ValueError(f"Cannot select folder: {folder}")
                 
                 # Remove \\Seen flag
-                result, data = mail.store(email_id, '-FLAGS', '\\Seen')
+                result, data = mail.uid('store', email_id, '-FLAGS.SILENT', '\\Seen')
+                if result != 'OK':
+                    # Fallback to sequence number if UID store unsupported
+                    result, data = mail.store(email_id, '-FLAGS.SILENT', '\\Seen')
                 
                 if result == 'OK':
                     logger.info(f"✅ Marked email {email_id} as unread")

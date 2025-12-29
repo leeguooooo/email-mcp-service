@@ -191,11 +191,35 @@ class EmailService:
             conn = sqlite3.connect(self._sync_db_path)
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
+
+            # Quick integrity check: if folder_id foreign keys are broken for this account,
+            # folder-based cache queries will be both wrong and potentially very slow.
+            if resolved_account_id and folder and folder != "all":
+                cursor.execute(
+                    """
+                    SELECT 1
+                    FROM emails
+                    WHERE account_id = ?
+                      AND folder_id IN (SELECT id FROM folders WHERE account_id = ?)
+                    LIMIT 1
+                    """,
+                    (resolved_account_id, resolved_account_id),
+                )
+                if cursor.fetchone() is None:
+                    conn.close()
+                    logger.warning(
+                        "Sync cache folder_id linkage appears broken for account %s; "
+                        "falling back to live IMAP for folder=%s",
+                        resolved_account_id,
+                        folder,
+                    )
+                    return None
             
             query = """
                 SELECT DISTINCT
                     e.uid as id,
                     e.uid as uid,
+                    e.message_id as message_id,
                     e.subject,
                     e.sender_email as "from",
                     e.date_sent as date,
@@ -203,7 +227,10 @@ class EmailService:
                     e.has_attachments as has_attachments,
                     e.account_id as account_id,
                     COALESCE(a.email, e.account_id) as account,
-                    f.name as folder
+                    CASE
+                        WHEN e.folder_id IS NULL THEN 'INBOX'
+                        ELSE f.name
+                    END as folder
                 FROM emails e
                 LEFT JOIN accounts a ON e.account_id = a.id
                 LEFT JOIN folders f ON e.folder_id = f.id
@@ -216,8 +243,13 @@ class EmailService:
                 params.append(resolved_account_id)
             
             if folder and folder != 'all':
-                query += " AND f.name = ?"
-                params.append(folder)
+                # Some cached emails may not have a resolved folder_id yet.
+                # Treat folder_id NULL rows as INBOX for filtering, but do not
+                # assume INBOX for broken foreign keys (folder_id set but missing folder row).
+                query += (
+                    " AND (f.name = ? COLLATE NOCASE OR (e.folder_id IS NULL AND ? = 'INBOX'))"
+                )
+                params.extend([folder, folder])
             
             if unread_only:
                 query += " AND e.is_read = 0"
@@ -238,6 +270,7 @@ class EmailService:
                 emails.append({
                     'id': row['id'],
                     'uid': row['uid'],
+                    'message_id': row['message_id'],
                     'subject': row['subject'] or 'No Subject',
                     'from': row['from'] or '',
                     'date': row['date'] or '',
@@ -263,12 +296,261 @@ class EmailService:
         except Exception as exc:
             logger.warning(f"Cache list failed, fallback to legacy: {exc}")
             return None
+
+    def _resolve_account_id_for_cache(self, account_id: Optional[str]) -> Optional[str]:
+        """Resolve an account identifier to the canonical account id for DB queries."""
+        try:
+            if account_id:
+                account = self.account_manager.get_account(account_id)
+                return account.get("id") if account else None
+
+            accounts = self.account_manager.list_accounts()
+            if len(accounts) == 1 and accounts[0].get("id"):
+                return accounts[0]["id"]
+        except Exception:
+            return None
+        return None
+
+    def _get_cached_email_row(
+        self,
+        *,
+        conn: sqlite3.Connection,
+        account_id: str,
+        folder: str,
+        uid: str,
+        message_id: Optional[str],
+    ) -> Optional[sqlite3.Row]:
+        """Return a cached email row joined with email_content, or None if missing."""
+        cursor = conn.cursor()
+
+        if message_id:
+            cursor.execute(
+                """
+                SELECT
+                    e.id AS email_db_id,
+                    e.uid,
+                    e.message_id,
+                    e.subject,
+                    e.sender_email,
+                    e.sender,
+                    e.date_sent,
+                    e.is_read,
+                    a.email AS account_email,
+                    f.name AS folder_name,
+                    ec.plain_text,
+                    ec.html_text
+                FROM emails e
+                LEFT JOIN email_content ec ON e.id = ec.email_id
+                LEFT JOIN accounts a ON e.account_id = a.id
+                LEFT JOIN folders f ON e.folder_id = f.id
+                WHERE e.account_id = ?
+                  AND e.message_id = ?
+                  AND e.is_deleted = 0
+                ORDER BY e.id DESC
+                LIMIT 1
+                """,
+                (account_id, message_id),
+            )
+            row = cursor.fetchone()
+            if row and (row["plain_text"] or row["html_text"]):
+                return row
+
+        # Fallback: match by uid + folder when folder linkage exists.
+        if folder and folder != "all":
+            cursor.execute(
+                """
+                SELECT
+                    e.id AS email_db_id,
+                    e.uid,
+                    e.message_id,
+                    e.subject,
+                    e.sender_email,
+                    e.sender,
+                    e.date_sent,
+                    e.is_read,
+                    a.email AS account_email,
+                    f.name AS folder_name,
+                    ec.plain_text,
+                    ec.html_text
+                FROM emails e
+                LEFT JOIN email_content ec ON e.id = ec.email_id
+                LEFT JOIN accounts a ON e.account_id = a.id
+                LEFT JOIN folders f ON e.folder_id = f.id
+                WHERE e.account_id = ?
+                  AND e.uid = ?
+                  AND e.is_deleted = 0
+                  AND (f.name = ? COLLATE NOCASE OR (e.folder_id IS NULL AND ? = 'INBOX'))
+                ORDER BY e.id DESC
+                LIMIT 1
+                """,
+                (account_id, uid, folder, folder),
+            )
+            row = cursor.fetchone()
+            if row and (row["plain_text"] or row["html_text"]):
+                return row
+
+        return None
+
+    def _get_email_detail_from_cache(
+        self,
+        *,
+        email_id: str,
+        folder: str,
+        account_id: Optional[str],
+        message_id: Optional[str],
+    ) -> Optional[Dict[str, Any]]:
+        """Return cached email detail from sync DB, or None when missing."""
+        if not self._sync_db_path.exists():
+            return None
+
+        resolved_account_id = self._resolve_account_id_for_cache(account_id)
+        if not resolved_account_id:
+            return None
+
+        try:
+            conn = sqlite3.connect(self._sync_db_path)
+            conn.row_factory = sqlite3.Row
+            try:
+                row = self._get_cached_email_row(
+                    conn=conn,
+                    account_id=resolved_account_id,
+                    folder=folder,
+                    uid=str(email_id),
+                    message_id=message_id,
+                )
+                if not row:
+                    return None
+
+                html_body = row["html_text"] or ""
+                body = row["plain_text"] or html_body
+                sender_value = row["sender_email"] or row["sender"] or ""
+
+                return {
+                    "success": True,
+                    "id": row["uid"],
+                    "requested_id": str(email_id),
+                    "from": sender_value,
+                    "subject": row["subject"] or "No Subject",
+                    "date": row["date_sent"] or "",
+                    "body": body or "",
+                    "html_body": html_body,
+                    "has_html": bool(html_body),
+                    "attachments": [],
+                    "attachment_count": 0,
+                    "unread": not bool(row["is_read"]),
+                    "message_id": row["message_id"] or message_id or "",
+                    "folder": folder or (row["folder_name"] or "INBOX"),
+                    "account": row["account_email"] or resolved_account_id,
+                    "account_id": resolved_account_id,
+                    "from_cache": True,
+                }
+            finally:
+                conn.close()
+        except Exception as exc:
+            logger.debug(f"Cache email detail failed, falling back to IMAP: {exc}")
+            return None
+
+    def _store_email_detail_to_cache(
+        self,
+        *,
+        detail: Dict[str, Any],
+        folder: str,
+        account_id: Optional[str],
+        requested_uid: str,
+        message_id: Optional[str],
+    ) -> None:
+        """Best-effort write email body/html into email_content for future reads."""
+        if not self._sync_db_path.exists():
+            return
+
+        resolved_account_id = self._resolve_account_id_for_cache(account_id) or detail.get(
+            "account_id"
+        )
+        if not resolved_account_id:
+            return
+
+        effective_message_id = (
+            message_id or detail.get("message_id") or detail.get("Message-ID")
+        )
+        if not effective_message_id:
+            return
+
+        html_text = detail.get("html_body") or ""
+        plain_candidate = detail.get("body") or ""
+        plain_text = (
+            plain_candidate
+            if plain_candidate and (not html_text or plain_candidate != html_text)
+            else ""
+        )
+
+        # Avoid writing empty content.
+        if not plain_text and not html_text:
+            return
+
+        try:
+            conn = sqlite3.connect(self._sync_db_path)
+            conn.row_factory = sqlite3.Row
+            try:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT id
+                    FROM emails
+                    WHERE account_id = ?
+                      AND message_id = ?
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (resolved_account_id, str(effective_message_id)),
+                )
+                row = cursor.fetchone()
+
+                if row is None and folder and folder != "all":
+                    cursor.execute(
+                        """
+                        SELECT e.id
+                        FROM emails e
+                        LEFT JOIN folders f ON e.folder_id = f.id
+                        WHERE e.account_id = ?
+                          AND e.uid = ?
+                          AND (f.name = ? COLLATE NOCASE OR (e.folder_id IS NULL AND ? = 'INBOX'))
+                        ORDER BY e.id DESC
+                        LIMIT 1
+                        """,
+                        (resolved_account_id, str(requested_uid), folder, folder),
+                    )
+                    row = cursor.fetchone()
+
+                if row is None:
+                    return
+
+                email_db_id = row["id"] if isinstance(row, sqlite3.Row) else row[0]
+                conn.execute(
+                    """
+                    INSERT INTO email_content(email_id, plain_text, html_text, headers, raw_size)
+                    VALUES(?, ?, ?, ?, ?)
+                    ON CONFLICT(email_id) DO UPDATE SET
+                        plain_text = excluded.plain_text,
+                        html_text = excluded.html_text,
+                        headers = excluded.headers,
+                        raw_size = excluded.raw_size,
+                        content_loaded_at = CURRENT_TIMESTAMP
+                    """,
+                    (email_db_id, plain_text or None, html_text or None, None, None),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception as exc:
+            logger.debug(f"Failed to store email detail into cache: {exc}")
     
     def get_email_detail(
         self,
         email_id: str,
         folder: str = 'INBOX',
-        account_id: Optional[str] = None
+        account_id: Optional[str] = None,
+        message_id: Optional[str] = None,
+        use_cache: bool = True,
     ) -> Dict[str, Any]:
         """
         Get detailed content of a specific email
@@ -282,9 +564,36 @@ class EmailService:
             Dictionary containing email details with 'success' field
         """
         try:
-            from ..legacy_operations import get_email_detail
-            result = get_email_detail(email_id, folder, account_id)
-            return self._ensure_success_field(result)
+            requested_uid = str(email_id)
+
+            if use_cache:
+                cached = self._get_email_detail_from_cache(
+                    email_id=requested_uid,
+                    folder=folder,
+                    account_id=account_id,
+                    message_id=message_id,
+                )
+                if cached is not None:
+                    return self._ensure_success_field(cached)
+
+            from ..legacy_operations import get_email_detail as legacy_get_email_detail
+
+            result = legacy_get_email_detail(email_id, folder, account_id)
+            result = self._ensure_success_field(result)
+
+            if result.get("success") and use_cache:
+                self._store_email_detail_to_cache(
+                    detail=result,
+                    folder=folder,
+                    account_id=account_id,
+                    requested_uid=requested_uid,
+                    message_id=message_id,
+                )
+
+            if "from_cache" not in result:
+                result["from_cache"] = False
+
+            return result
         except Exception as e:
             logger.error(f"Get email detail failed: {e}", exc_info=True)
             return {'error': str(e), 'success': False}

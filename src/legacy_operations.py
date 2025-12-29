@@ -7,6 +7,7 @@ import sqlite3
 import email
 from email.header import decode_header
 import logging
+import re
 from typing import Dict, Any, Optional, List, Union
 from datetime import datetime
 import json
@@ -102,22 +103,39 @@ def _get_sync_db_path() -> Path:
         return Path("data/email_sync.db")
 
 
-def _lookup_message_id_from_sync_db(account_id: str, uid: str):
-    """Best-effort lookup of Message-ID from local sync DB by account/uid."""
+def _lookup_message_id_from_sync_db(account_id: str, uid: str, folder: Optional[str] = None):
+    """Best-effort lookup of Message-ID from local sync DB by account/uid/folder."""
     db_path = _get_sync_db_path()
     if not db_path.exists():
         return None
     try:
-        import sqlite3
         conn = sqlite3.connect(db_path)
-        cursor = conn.execute(
-            "SELECT message_id FROM emails WHERE account_id = ? AND uid = ? ORDER BY id DESC LIMIT 1",
-            (account_id, str(uid)),
-        )
-        row = cursor.fetchone()
-        conn.close()
-        if row and row[0]:
-            return row[0]
+        try:
+            if folder:
+                row = conn.execute(
+                    """
+                    SELECT e.message_id
+                    FROM emails e
+                    JOIN folders f ON e.folder_id = f.id
+                    WHERE e.account_id = ?
+                      AND e.uid = ?
+                      AND f.name = ? COLLATE NOCASE
+                    ORDER BY e.id DESC
+                    LIMIT 1
+                    """,
+                    (account_id, str(uid), folder),
+                ).fetchone()
+                if row and row[0]:
+                    return row[0]
+
+            row = conn.execute(
+                "SELECT message_id FROM emails WHERE account_id = ? AND uid = ? ORDER BY id DESC LIMIT 1",
+                (account_id, str(uid)),
+            ).fetchone()
+            if row and row[0]:
+                return row[0]
+        finally:
+            conn.close()
     except Exception:
         pass
     return None
@@ -129,7 +147,6 @@ def _mark_sync_cache_read(account_id: str, uid: str):
     if not db_path.exists():
         return
     try:
-        import sqlite3
         conn = sqlite3.connect(db_path)
         conn.execute(
             "UPDATE emails SET is_read = 1, updated_at = CURRENT_TIMESTAMP WHERE account_id = ? AND uid = ?",
@@ -139,32 +156,6 @@ def _mark_sync_cache_read(account_id: str, uid: str):
         conn.close()
     except Exception:
         return
-    """
-    安全地解析邮件，支持编码容错
-    
-    当遇到未知编码（如 'unknown-8bit'）时，使用 latin-1 作为回退编码。
-    latin-1 可以解码任何字节序列，确保邮件不会因编码问题而丢失。
-    
-    Args:
-        raw_email: 原始邮件字节数据
-        
-    Returns:
-        解析后的邮件对象
-    """
-    try:
-        # 首先尝试正常解析
-        return email.message_from_bytes(raw_email)
-    except (LookupError, UnicodeDecodeError) as e:
-        # 编码错误时使用 latin-1 强制解码
-        logger.warning(f"Email parsing failed with encoding error: {e}, using latin-1 fallback")
-        try:
-            # latin-1 可以解码任何字节序列，不会抛出异常
-            text = raw_email.decode('latin-1', errors='replace')
-            return email.message_from_string(text)
-        except Exception as fallback_error:
-            # 如果仍然失败，记录错误并抛出
-            logger.error(f"Failed to parse email even with fallback: {fallback_error}")
-            raise
 
 def _normalize_folder_name(folder: Optional[Union[str, bytes]]) -> Union[str, bytes]:
     """
@@ -195,6 +186,99 @@ def _normalize_folder_name(folder: Optional[Union[str, bytes]]) -> Union[str, by
         if any(ch.isspace() for ch in encoded) and not (encoded.startswith('"') and encoded.endswith('"')):
             return f'"{encoded}"'
         return encoded
+
+
+_IMAP_LIST_FLAGS_RE = re.compile(r"^\\((?P<flags>[^)]*)\\)")
+
+
+def _parse_imap_list_response(folder_data: bytes) -> Dict[str, str]:
+    """
+    Parse an IMAP LIST response line.
+
+    Example: b'(\\\\Sent) \"/\" \"&XfJT0ZAB-\"'
+    """
+    try:
+        line = folder_data.decode("utf-8", errors="ignore").strip()
+    except Exception:
+        line = str(folder_data)
+
+    flags_match = _IMAP_LIST_FLAGS_RE.match(line)
+    flags = flags_match.group("flags") if flags_match else ""
+
+    quoted = re.findall(r"\"([^\"]*)\"", line)
+    delimiter = quoted[-2] if len(quoted) >= 2 else ""
+    name = quoted[-1] if quoted else line.split()[-1] if line.split() else ""
+
+    return {"name": name, "flags": flags, "delimiter": delimiter}
+
+
+def _find_uid_by_message_id_across_folders(
+    mail: imaplib.IMAP4,
+    msg_id: str,
+    *,
+    skip_folders: Optional[set[str]] = None,
+    max_folders: int = 50,
+) -> Optional[Dict[str, str]]:
+    """
+    Search all folders for a Message-ID and return the folder + resolved UID.
+
+    Returns:
+        {"folder": <folder_name>, "uid": <uid>} or None
+    """
+    skip = {f.lower() for f in (skip_folders or set()) if f}
+    try:
+        result, folders = mail.list()
+    except Exception as exc:
+        logger.warning(f"IMAP LIST failed during Message-ID fallback: {exc}")
+        return None
+
+    if result != "OK" or not folders:
+        return None
+
+    # Prefer INBOX early when present
+    parsed: List[Dict[str, str]] = []
+    for folder_data in folders:
+        info = _parse_imap_list_response(folder_data)
+        name = info.get("name") or ""
+        if not name:
+            continue
+        flags = (info.get("flags") or "").lower()
+        if "\\noselect" in flags:
+            continue
+        if name.lower() in skip:
+            continue
+        parsed.append({"name": name})
+
+    # Keep deterministic order; INBOX first if present
+    parsed.sort(key=lambda x: 0 if x["name"].lower() == "inbox" else 1)
+    parsed = parsed[:max_folders]
+
+    for entry in parsed:
+        folder_name = entry["name"]
+        try:
+            sel_result, _ = mail.select(_normalize_folder_name(folder_name))
+            if sel_result != "OK":
+                continue
+            search_result, search_data = mail.uid(
+                "search", None, "HEADER", "Message-ID", msg_id
+            )
+            if search_result != "OK" or not search_data or not search_data[0]:
+                continue
+            uid_list = search_data[0].split()
+            if not uid_list:
+                continue
+            alt_uid = uid_list[0]
+            alt_uid_decoded = (
+                alt_uid.decode() if isinstance(alt_uid, bytes) else str(alt_uid)
+            )
+            return {"folder": folder_name, "uid": alt_uid_decoded}
+        except Exception as exc:
+            logger.debug(
+                "Message-ID search failed for folder %s: %s", folder_name, exc
+            )
+            continue
+
+    return None
 
 def get_mailbox_status(folder="INBOX", account_id=None):
     """Get mailbox status"""
@@ -288,91 +372,51 @@ def fetch_emails(limit=50, unread_only=False, folder="INBOX", account_id=None, u
         use_cache: Try to use cached data from email_sync.db (default: False)
     """
     try:
+        # Resolve account_id only when it matches a configured account id/email.
+        # IMPORTANT: do not implicitly fall back to the default account for unknown ids.
         resolved_account = None
-        if account_id:
-            resolved_account = account_manager.get_account(account_id)
-            if not resolved_account:
-                return {"error": f"No email account configured for {account_id}"}
-            # Use internal account ID for cache/DB lookups
-            account_id = resolved_account.get('id', account_id)
+        if account_id and account_manager.list_accounts():
+            accounts = account_manager.accounts_data.get('accounts', {})
+            if account_id in accounts:
+                resolved_account = account_manager.get_account(account_id)
+            elif '@' in str(account_id):
+                for acc_id, acc_data in accounts.items():
+                    if acc_data.get('email') == account_id:
+                        resolved_account = account_manager.get_account(acc_id)
+                        break
+            if resolved_account:
+                account_id = resolved_account.get('id', account_id)
         # If no specific account, fetch from all accounts
         # CRITICAL: Must check this BEFORE trying cache, because cache only works for single account
         if account_id is None and account_manager.list_accounts():
-            if use_cache:
-                try:
-                    cache = CachedEmailOperations()
-                    if cache.is_available():
-                        accounts = account_manager.list_accounts()
-                        combined_emails = []
-                        accounts_info = []
-                        total_emails = 0
-                        total_unread = 0
-                        
-                        for acc in accounts:
-                            acc_id = acc['id']
-                            acc_email = acc.get('email')
-                            cached = cache.list_emails_cached(
-                                limit=limit,
-                                unread_only=unread_only,
-                                folder=folder,
-                                account_id=acc_id,
-                                max_age_minutes=60
-                            )
-                            if cached:
-                                emails = cached.get('emails', [])
-                                for em in emails:
-                                    em['account'] = acc_email
-                                    em['account_id'] = acc_id
-                                    em['source'] = 'cache_sync_db'
-                                combined_emails.extend(emails)
-                                accounts_info.append({
-                                    'account': acc_email,
-                                    'total': cached.get('total_in_folder', 0),
-                                    'unread': cached.get('unread_count', 0),
-                                    'fetched': len(emails)
-                                })
-                                total_emails += cached.get('total_in_folder', 0)
-                                total_unread += cached.get('unread_count', 0)
-                        if combined_emails:
-                            combined_emails.sort(key=lambda x: x.get('date', ''), reverse=True)
-                            combined_emails = combined_emails[:limit]
-                            return {
-                                'emails': combined_emails,
-                                'total_emails': total_emails,
-                                'total_unread': total_unread,
-                                'accounts_count': len(accounts),
-                                'accounts_info': accounts_info,
-                                'from_cache': True
-                            }
-                        else:
-                            return {'error': 'Cache empty for all accounts', 'success': False}
-                    logger.info("Cache unavailable or empty for multi-account, falling back to live fetch")
-                except Exception as exc:
-                    logger.warning(f"Cache read failed for multi-account: {exc}, falling back to live fetch")
             return fetch_emails_multi_account(limit, unread_only, folder, use_cache)
-        
-            # Try cache first if requested (only for single account)
-            if use_cache and account_id is not None:
-                try:
-                    from .operations.cached_operations import CachedEmailOperations
-                    cache = CachedEmailOperations()
-                    
-                    if cache.is_available():
-                        logger.info(f"Using cached email data for account {account_id}")
-                        result = cache.list_emails_cached(
-                            limit=limit,
-                            unread_only=unread_only,
-                            folder=folder,
-                            account_id=account_id
+
+        # Try cache first if requested (only for single account)
+        if use_cache and account_id is not None:
+            try:
+                # Import inside function so tests can patch it reliably
+                from .operations.cached_operations import CachedEmailOperations
+
+                cache = CachedEmailOperations()
+
+                if cache.is_available():
+                    logger.info(f"Using cached email data for account {account_id}")
+                    result = cache.list_emails_cached(
+                        limit=limit,
+                        unread_only=unread_only,
+                        folder=folder,
+                        account_id=account_id
+                    )
+                    # Cache returns None if expired/missing, or dict (even if emails=[]) if valid
+                    if result is not None:
+                        logger.info(
+                            "Cache hit: %s emails (age: %.1f min)",
+                            len(result.get('emails', [])),
+                            result.get('cache_age_minutes', 0) or 0.0,
                         )
-                        # Cache returns None if expired/missing, or dict (even if emails=[]) if valid
-                        if result is not None:
-                            logger.info(f"Cache hit: {len(result.get('emails', []))} emails (age: {result.get('cache_age_minutes', 0):.1f} min)")
-                            return result
-                        else:
-                            return {'error': 'Cache miss or expired', 'success': False}
-                except Exception as e:
-                    logger.warning(f"Cache fetch failed, falling back to live IMAP: {e}")
+                        return result
+            except Exception as e:
+                logger.warning(f"Cache fetch failed, falling back to live IMAP: {e}")
         
         # Single account fetch
         conn_mgr = get_connection_manager(account_id)
@@ -413,10 +457,12 @@ def fetch_emails(limit=50, unread_only=False, folder="INBOX", account_id=None, u
             emails = []
             for email_uid in email_uids:
                 try:
-                    # CRITICAL: Use UID FETCH to get stable identifiers
-                    result, data = mail.uid('fetch', email_uid, '(RFC822)')
-                    raw_email = data[0][1]
-                    msg = safe_parse_email(raw_email)
+                    # CRITICAL: Use UID FETCH with headers only (much faster than full RFC822)
+                    result, data = mail.uid('fetch', email_uid, '(RFC822.HEADER FLAGS)')
+                    if result != 'OK' or not data or data[0] is None:
+                        raise Exception(f"UID fetch failed for {email_uid}: {result}")
+                    raw_headers = data[0][1] if isinstance(data[0], tuple) and len(data[0]) > 1 else b""
+                    msg = safe_parse_email(raw_headers)
                     
                     # Parse email data
                     from_addr = decode_mime_words(msg.get("From", ""))
@@ -430,23 +476,23 @@ def fetch_emails(limit=50, unread_only=False, folder="INBOX", account_id=None, u
                     except:
                         date_formatted = date_str
                     
-                    # Check if unread (use UID)
-                    result, data = mail.uid('fetch', email_uid, '(FLAGS)')
-                    # UID fetch returns: [(b'123 (UID 456 FLAGS (\\Seen))', b'')]
-                    # We need to extract the FLAGS from the first element
+                    # Check if unread (FLAGS were included in the same FETCH)
                     flags_str = ""
                     if data and data[0]:
-                        # data[0] is a tuple: (b'...', b'')
-                        # We want the first element of that tuple
                         flags_response = data[0]
                         if isinstance(flags_response, tuple) and flags_response[0]:
-                            flags_str = flags_response[0].decode('utf-8') if isinstance(flags_response[0], bytes) else str(flags_response[0])
+                            flags_str = (
+                                flags_response[0].decode("utf-8")
+                                if isinstance(flags_response[0], bytes)
+                                else str(flags_response[0])
+                            )
                         elif isinstance(flags_response, bytes):
-                            flags_str = flags_response.decode('utf-8')
+                            flags_str = flags_response.decode("utf-8", errors="ignore")
                     is_unread = '\\Seen' not in flags_str
                     
                     # CRITICAL: Return UID as the primary ID (stable identifier)
                     uid_str = email_uid.decode() if isinstance(email_uid, bytes) else str(email_uid)
+                    message_id = msg.get("Message-ID", "")
                     
                     email_info = {
                         "id": uid_str,  # UID - stable even when messages are added/deleted
@@ -455,6 +501,8 @@ def fetch_emails(limit=50, unread_only=False, folder="INBOX", account_id=None, u
                         "subject": subject,
                         "date": date_formatted,
                         "unread": is_unread,
+                        "message_id": message_id,
+                        "folder": folder,
                         "account": conn_mgr.email,
                         "account_id": conn_mgr.account_id  # Canonical account ID for routing
                     }
@@ -577,10 +625,12 @@ def get_email_detail(email_id, folder="INBOX", account_id=None):
         
         last_error = None
         selected_folder = None
+        resolved_folder_name: Optional[str] = None
         for candidate in folders_to_try:
             selected_folder = _normalize_folder_name(candidate)
             result, data = mail.select(selected_folder)
             if result == 'OK':
+                resolved_folder_name = candidate
                 break
             last_error = f"Cannot select folder '{candidate}': {data}"
             selected_folder = None
@@ -591,14 +641,89 @@ def get_email_detail(email_id, folder="INBOX", account_id=None):
         # Ensure email_id is a string
         if isinstance(email_id, int):
             email_id = str(email_id)
+        requested_email_id = email_id.decode() if isinstance(email_id, bytes) else str(email_id)
+        email_id = requested_email_id
+        msg_id = _lookup_message_id_from_sync_db(
+            conn_mgr.account_id,
+            email_id,
+            resolved_folder_name or folder or "INBOX",
+        )
         
         # CRITICAL: Try UID first (stable), fallback to sequence number
         result, data = mail.uid('fetch', email_id, '(RFC822)')
         
         # Check if UID fetch failed or returned empty
         if result != 'OK' or not data or data[0] is None:
-            logger.warning(f"UID fetch failed for {email_id}, trying sequence number")
-            result, data = mail.fetch(email_id, '(RFC822)')
+            # Try to resolve by Message-ID when possible (handles UIDVALIDITY changes)
+            if msg_id:
+                try:
+                    search_result, search_data = mail.uid(
+                        "search", None, "HEADER", "Message-ID", str(msg_id)
+                    )
+                    if search_result == "OK" and search_data and search_data[0]:
+                        uid_list = search_data[0].split()
+                        if uid_list:
+                            alt_uid = uid_list[0]
+                            alt_uid_decoded = (
+                                alt_uid.decode()
+                                if isinstance(alt_uid, bytes)
+                                else str(alt_uid)
+                            )
+                            alt_result, alt_data = mail.uid(
+                                "fetch", alt_uid_decoded, "(RFC822)"
+                            )
+                            if (
+                                alt_result == "OK"
+                                and alt_data
+                                and alt_data[0] is not None
+                            ):
+                                logger.info(
+                                    "Resolved email UID via Message-ID search: requested=%s resolved=%s",
+                                    requested_email_id,
+                                    alt_uid_decoded,
+                                )
+                                email_id = alt_uid_decoded
+                                result, data = alt_result, alt_data
+                except Exception as search_exc:
+                    logger.warning(f"Message-ID search failed: {search_exc}")
+
+            # Cross-folder fallback (providers like 163 use special-use folders that don't map to INBOX)
+            if (
+                msg_id
+                and (result != "OK" or not data or data[0] is None)
+                and conn_mgr.provider != "gmail"
+            ):
+                try:
+                    found = _find_uid_by_message_id_across_folders(
+                        mail,
+                        str(msg_id),
+                        skip_folders={resolved_folder_name or folder or "INBOX"},
+                    )
+                    if found:
+                        found_folder = found["folder"]
+                        found_uid = found["uid"]
+                        logger.info(
+                            "Resolved via cross-folder Message-ID search: requested=%s resolved=%s folder=%s",
+                            requested_email_id,
+                            found_uid,
+                            found_folder,
+                        )
+                        resolved_folder_name = found_folder
+                        email_id = found_uid
+                        alt_result, alt_data = mail.uid("fetch", found_uid, "(RFC822)")
+                        if (
+                            alt_result == "OK"
+                            and alt_data
+                            and alt_data[0] is not None
+                        ):
+                            result, data = alt_result, alt_data
+                except Exception as search_exc:
+                    logger.warning(f"Cross-folder Message-ID search failed: {search_exc}")
+
+            # Fallback to sequence number only if still missing after Message-ID resolution
+            if result != 'OK' or not data or data[0] is None:
+                logger.warning(f"UID fetch failed for {email_id}, trying sequence number")
+                result, data = mail.fetch(email_id, '(RFC822)')
         
         # Validate data
         if result != 'OK':
@@ -669,6 +794,7 @@ def get_email_detail(email_id, folder="INBOX", account_id=None):
         
         return {
             "id": email_id.decode() if isinstance(email_id, bytes) else email_id,
+            "requested_id": requested_email_id,
             "from": from_addr,
             "to": to_addr,
             "cc": cc_addr,
@@ -681,7 +807,7 @@ def get_email_detail(email_id, folder="INBOX", account_id=None):
             "attachment_count": len(attachments),
             "unread": is_unread,
             "message_id": message_id,
-            "folder": folder,
+            "folder": resolved_folder_name or folder,
             "account": conn_mgr.email,
             "account_id": conn_mgr.account_id  # Canonical account ID for consistent routing
         }
@@ -711,10 +837,12 @@ def mark_email_read(email_id, folder="INBOX", account_id=None):
         
         last_error = None
         selected_folder = None
+        resolved_folder_name: Optional[str] = None
         for candidate in folders_to_try:
             selected_folder = _normalize_folder_name(candidate)
             result, data = mail.select(selected_folder)
             if result == 'OK':
+                resolved_folder_name = candidate
                 break
             last_error = f"Cannot select folder '{candidate}': {data}"
             selected_folder = None
@@ -726,40 +854,119 @@ def mark_email_read(email_id, folder="INBOX", account_id=None):
         if isinstance(email_id, int):
             email_id = str(email_id)
         
-        flags_to_add = r'(\Seen)'
+        flags_to_add = r"(\Seen)"
         success = False
-        msg_id = _lookup_message_id_from_sync_db(conn_mgr.account_id, email_id) if conn_mgr.provider == "gmail" else None
+        resolved_uid = str(email_id)
+        msg_id = _lookup_message_id_from_sync_db(
+            conn_mgr.account_id,
+            email_id,
+            resolved_folder_name or folder or "INBOX",
+        )
 
-        # 尝试在选中的文件夹直接用 UID/sequence 设为已读
-        result, data = mail.uid('store', email_id, '+FLAGS', flags_to_add)
-        if result == 'OK' and data and data[0]:
-            success = True
-        else:
-            logger.warning(f"UID store failed or empty response for {email_id}, trying sequence number")
-            result, data = mail.store(email_id, '+FLAGS', flags_to_add)
-            success = result == 'OK' and data and data[0]
+        def _extract_flags_str(fetch_data) -> str:
+            if not fetch_data or not fetch_data[0]:
+                return ""
+            flags_response = fetch_data[0]
+            if isinstance(flags_response, tuple) and flags_response[0]:
+                return (
+                    flags_response[0].decode("utf-8")
+                    if isinstance(flags_response[0], bytes)
+                    else str(flags_response[0])
+                )
+            if isinstance(flags_response, bytes):
+                return flags_response.decode("utf-8", errors="ignore")
+            return str(flags_response)
 
-        # Gmail 特殊处理：UID 可能因标签不同而不匹配，基于 Message-ID 再搜一遍（当前文件夹）
-        if not success and conn_mgr.provider == "gmail" and msg_id:
+        def _verify_seen(uid_or_seq: str, *, use_uid: bool) -> bool:
             try:
-                search_result, search_data = mail.uid('search', None, f'HEADER Message-ID "{msg_id}"')
-                if search_result == 'OK' and search_data and search_data[0]:
+                if use_uid:
+                    r, d = mail.uid("fetch", uid_or_seq, "(FLAGS)")
+                else:
+                    r, d = mail.fetch(uid_or_seq, "(FLAGS)")
+                if r != "OK" or not d or d[0] is None:
+                    return False
+                return "\\Seen" in _extract_flags_str(d)
+            except Exception:
+                return False
+
+        # 1) Try UID store first, then verify via UID FETCH FLAGS.
+        result, _data = mail.uid("store", email_id, "+FLAGS", flags_to_add)
+        if result == "OK" and _verify_seen(str(email_id), use_uid=True):
+            success = True
+            resolved_uid = str(email_id)
+
+        # 2) UID 可能因 UIDVALIDITY 变化/同步延迟而不匹配，基于 Message-ID 再搜一遍（当前文件夹）
+        if not success and msg_id:
+            try:
+                search_result, search_data = mail.uid(
+                    "search", None, "HEADER", "Message-ID", str(msg_id)
+                )
+                if search_result == "OK" and search_data and search_data[0]:
                     uid_list = search_data[0].split()
                     for alt_uid in uid_list:
-                        alt_uid_decoded = alt_uid.decode() if isinstance(alt_uid, bytes) else alt_uid
-                        result, data = mail.uid('store', alt_uid_decoded, '+FLAGS', flags_to_add)
-                        if result == 'OK' and data and data[0]:
-                            logger.info(f"Marked via Message-ID search UID={alt_uid_decoded} msgid={msg_id}")
+                        alt_uid_decoded = (
+                            alt_uid.decode()
+                            if isinstance(alt_uid, bytes)
+                            else str(alt_uid)
+                        )
+                        result, _data = mail.uid(
+                            "store", alt_uid_decoded, "+FLAGS", flags_to_add
+                        )
+                        if result == "OK" and _verify_seen(
+                            alt_uid_decoded, use_uid=True
+                        ):
+                            logger.info(
+                                "Marked via Message-ID search UID=%s",
+                                alt_uid_decoded,
+                            )
                             success = True
+                            resolved_uid = alt_uid_decoded
                             break
             except Exception as search_exc:
-                logger.warning(f"Gmail Message-ID search failed: {search_exc}")
+                logger.warning(f"Message-ID search failed: {search_exc}")
+
+        # 3) Cross-folder fallback (e.g. 163 special-use folders)
+        if (
+            not success
+            and msg_id
+            and conn_mgr.provider != "gmail"
+        ):
+            try:
+                found = _find_uid_by_message_id_across_folders(
+                    mail,
+                    str(msg_id),
+                    skip_folders={resolved_folder_name or folder or "INBOX"},
+                )
+                if found:
+                    found_folder = found["folder"]
+                    found_uid = found["uid"]
+                    mail.select(_normalize_folder_name(found_folder))
+                    result, _data = mail.uid(
+                        "store", found_uid, "+FLAGS", flags_to_add
+                    )
+                    if result == "OK" and _verify_seen(found_uid, use_uid=True):
+                        logger.info(
+                            "Marked via cross-folder Message-ID search UID=%s folder=%s",
+                            found_uid,
+                            found_folder,
+                        )
+                        success = True
+                        resolved_uid = found_uid
+                        resolved_folder_name = found_folder
+            except Exception as search_exc:
+                logger.warning(f"Cross-folder Message-ID search failed: {search_exc}")
+
+        # 4) Final fallback to sequence-number STORE (legacy servers)
+        if not success:
+            logger.warning(f"UID store failed for {email_id}, trying sequence number")
+            result, _data = mail.store(email_id, "+FLAGS", flags_to_add)
+            success = result == "OK" and _verify_seen(str(email_id), use_uid=False)
         
         if not success:
             raise Exception(f"Failed to mark email {email_id} as read")
         
         # Best-effort update local sync cache
-        _mark_sync_cache_read(conn_mgr.account_id, email_id)
+        _mark_sync_cache_read(conn_mgr.account_id, resolved_uid)
         
         return {"success": True, "message": "Email marked as read", "account": conn_mgr.email}
         
