@@ -310,7 +310,11 @@ class EmailMonitor:
                 return {
                     "success": False,
                     "error": "Failed to fetch emails",
-                    "details": fetch_result
+                    "important_emails": [],
+                    "details": {
+                        "emails": fetch_result.get("emails", []),
+                        "fetch_result": fetch_result,
+                    },
                 }
             
             emails = fetch_result.get("emails", [])
@@ -323,7 +327,12 @@ class EmailMonitor:
                         "fetched_emails": 0,
                         "important_emails": 0,
                         "notifications_sent": 0
-                    }
+                    },
+                    "important_emails": [],
+                    "details": {
+                        "emails": [],
+                        "fetch_result": fetch_result,
+                    },
                 }
             
             # 2. AI 过滤
@@ -332,11 +341,22 @@ class EmailMonitor:
                 return {
                     "success": False,
                     "error": "Failed to filter emails",
-                    "details": filter_result
+                    "important_emails": [],
+                    "details": {
+                        "emails": emails,
+                        "fetch_result": fetch_result,
+                        "filter_result": filter_result,
+                    },
                 }
             
             filter_results = filter_result.get("results", [])
             important_count = sum(1 for r in filter_results if r.get("is_important", False))
+            important_ids = {
+                r.get("email_id")
+                for r in filter_results
+                if r.get("is_important", False) and r.get("email_id")
+            }
+            important_emails = [e for e in emails if e.get("id") in important_ids]
             
             # 3. 发送通知
             notification_result = self.send_notifications(emails, filter_results)
@@ -356,7 +376,9 @@ class EmailMonitor:
                 "success": True,
                 "message": "Monitoring cycle completed successfully",
                 "stats": stats,
+                "important_emails": important_emails,
                 "details": {
+                    "emails": emails,
                     "fetch_result": fetch_result,
                     "filter_result": filter_result,
                     "notification_result": notification_result

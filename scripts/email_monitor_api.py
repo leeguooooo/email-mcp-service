@@ -78,10 +78,89 @@ app.add_middleware(
 class CheckEmailsResponse(BaseModel):
     """检查邮件响应"""
     success: bool
-    message: str
-    stats: Dict[str, Any]
+    message: Optional[str] = None
+    stats: Optional[Dict[str, Any]] = None
     important_emails: list = []
-    notification: Dict[str, Any] = None
+    notification: Optional[Dict[str, Any]] = None
+    details: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+class EmailDetailRequest(BaseModel):
+    """请求单封邮件详情"""
+    email_id: str
+    message_id: Optional[str] = None
+    account_id: Optional[str] = None
+    folder: str = "INBOX"
+
+
+class ListEmailsRequest(BaseModel):
+    """请求邮件列表"""
+    limit: int = 100
+    offset: int = 0
+    unread_only: bool = False
+    folder: str = "all"
+    account_id: Optional[str] = None
+    include_metadata: bool = True
+    use_cache: bool = True
+
+
+class MarkEmailsRequest(BaseModel):
+    """标记邮件已读/未读"""
+    email_ids: List[str]
+    mark_as: str  # read|unread
+    folder: str = "INBOX"
+    account_id: Optional[str] = None
+
+
+class DeleteEmailsRequest(BaseModel):
+    """删除/移入垃圾箱"""
+    email_ids: List[str]
+    folder: str = "INBOX"
+    permanent: bool = False
+    trash_folder: str = "Trash"
+    account_id: Optional[str] = None
+
+
+class MoveEmailsRequest(BaseModel):
+    """移动邮件到指定文件夹"""
+    email_ids: List[str]
+    target_folder: str
+    source_folder: str = "INBOX"
+    account_id: Optional[str] = None
+
+
+class SendEmailRequest(BaseModel):
+    """发送新邮件"""
+    to: List[str]
+    subject: str
+    body: str
+    cc: Optional[List[str]] = None
+    bcc: Optional[List[str]] = None
+    attachments: Optional[List[Dict[str, str]]] = None
+    is_html: bool = False
+    account_id: Optional[str] = None
+
+
+class ReplyEmailRequest(BaseModel):
+    """回复邮件"""
+    email_id: str
+    body: str
+    folder: str = "INBOX"
+    reply_all: bool = False
+    attachments: Optional[List[Dict[str, str]]] = None
+    is_html: bool = False
+    account_id: Optional[str] = None
+
+
+class ForwardEmailRequest(BaseModel):
+    """转发邮件"""
+    email_id: str
+    to: List[str]
+    body: Optional[str] = None
+    folder: str = "INBOX"
+    include_attachments: bool = True
+    account_id: Optional[str] = None
 
 
 @app.get("/")
@@ -136,6 +215,233 @@ async def check_emails():
             status_code=500,
             detail=f"Failed to check emails: {str(e)}"
         )
+
+
+@app.post("/api/get-email-detail", dependencies=[Depends(verify_api_key)])
+async def get_email_detail(req: EmailDetailRequest):
+    """
+    获取单封邮件的完整内容 (需要 API Key)
+
+    Body:
+        email_id: 邮件 UID
+        account_id: 可选，指定账户 ID/邮箱
+        folder: 可选，默认 INBOX
+    """
+    try:
+        from src.account_manager import AccountManager
+        from src.services.email_service import EmailService
+
+        svc = EmailService(AccountManager())
+        result = await asyncio.to_thread(
+            svc.get_email_detail,
+            email_id=req.email_id,
+            folder=req.folder,
+            account_id=req.account_id,
+            message_id=req.message_id,
+        )
+        return JSONResponse(content=result, status_code=200)
+    except Exception as e:
+        logger.error("获取邮件详情时发生错误: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get email detail: {str(e)}")
+
+
+@app.get("/api/list-accounts", dependencies=[Depends(verify_api_key)])
+async def list_accounts():
+    """列出所有已配置账户"""
+    try:
+        from src.account_manager import AccountManager
+
+        mgr = AccountManager()
+        accounts = mgr.list_accounts()
+        return JSONResponse(
+            content={"success": True, "accounts": accounts, "count": len(accounts)},
+            status_code=200,
+        )
+    except Exception as e:
+        logger.error("列出账户失败: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/list-unread-folders", dependencies=[Depends(verify_api_key)])
+async def list_unread_folders(
+    account_id: Optional[str] = None,
+    include_empty: bool = True,
+):
+    """列出文件夹及未读数"""
+    try:
+        from src.account_manager import AccountManager
+        from src.services.folder_service import FolderService
+
+        svc = FolderService(AccountManager())
+        result = await asyncio.to_thread(
+            svc.list_folders_with_unread_count,
+            account_id=account_id,
+            include_empty=include_empty,
+        )
+        return JSONResponse(content=result, status_code=200)
+    except Exception as e:
+        logger.error("列出文件夹失败: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/list-emails", dependencies=[Depends(verify_api_key)])
+async def list_emails(req: ListEmailsRequest):
+    """获取邮件列表"""
+    try:
+        from src.account_manager import AccountManager
+        from src.services.email_service import EmailService
+
+        svc = EmailService(AccountManager())
+        result = await asyncio.to_thread(
+            svc.list_emails,
+            limit=req.limit,
+            unread_only=req.unread_only,
+            folder=req.folder,
+            account_id=req.account_id,
+            offset=req.offset,
+            include_metadata=req.include_metadata,
+            use_cache=req.use_cache,
+        )
+        return JSONResponse(content=result, status_code=200)
+    except Exception as e:
+        logger.error("获取邮件列表失败: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/mark-emails", dependencies=[Depends(verify_api_key)])
+async def mark_emails(req: MarkEmailsRequest):
+    """标记邮件已读/未读"""
+    try:
+        from src.account_manager import AccountManager
+        from src.services.email_service import EmailService
+
+        svc = EmailService(AccountManager())
+        result = await asyncio.to_thread(
+            svc.mark_emails,
+            email_ids=req.email_ids,
+            mark_as=req.mark_as,
+            folder=req.folder,
+            account_id=req.account_id,
+        )
+        return JSONResponse(content=result, status_code=200)
+    except Exception as e:
+        logger.error("标记邮件失败: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/delete-emails", dependencies=[Depends(verify_api_key)])
+async def delete_emails(req: DeleteEmailsRequest):
+    """删除邮件或移入垃圾箱"""
+    try:
+        from src.account_manager import AccountManager
+        from src.services.email_service import EmailService
+
+        svc = EmailService(AccountManager())
+        result = await asyncio.to_thread(
+            svc.delete_emails,
+            email_ids=req.email_ids,
+            folder=req.folder,
+            permanent=req.permanent,
+            trash_folder=req.trash_folder,
+            account_id=req.account_id,
+        )
+        return JSONResponse(content=result, status_code=200)
+    except Exception as e:
+        logger.error("删除邮件失败: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/move-emails", dependencies=[Depends(verify_api_key)])
+async def move_emails(req: MoveEmailsRequest):
+    """移动邮件到指定文件夹"""
+    try:
+        from src.account_manager import AccountManager
+        from src.services.folder_service import FolderService
+
+        svc = FolderService(AccountManager())
+        result = await asyncio.to_thread(
+            svc.move_emails_to_folder,
+            email_ids=req.email_ids,
+            target_folder=req.target_folder,
+            source_folder=req.source_folder,
+            account_id=req.account_id,
+        )
+        return JSONResponse(content=result, status_code=200)
+    except Exception as e:
+        logger.error("移动邮件失败: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/send-email", dependencies=[Depends(verify_api_key)])
+async def send_email(req: SendEmailRequest):
+    """发送新邮件"""
+    try:
+        from src.account_manager import AccountManager
+        from src.services.communication_service import CommunicationService
+
+        svc = CommunicationService(AccountManager())
+        result = await asyncio.to_thread(
+            svc.send_email,
+            to=req.to,
+            subject=req.subject,
+            body=req.body,
+            cc=req.cc,
+            bcc=req.bcc,
+            attachments=req.attachments,
+            is_html=req.is_html,
+            account_id=req.account_id,
+        )
+        return JSONResponse(content=result, status_code=200)
+    except Exception as e:
+        logger.error("发送邮件失败: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/reply-email", dependencies=[Depends(verify_api_key)])
+async def reply_email(req: ReplyEmailRequest):
+    """回复邮件"""
+    try:
+        from src.account_manager import AccountManager
+        from src.services.communication_service import CommunicationService
+
+        svc = CommunicationService(AccountManager())
+        result = await asyncio.to_thread(
+            svc.reply_email,
+            email_id=req.email_id,
+            body=req.body,
+            reply_all=req.reply_all,
+            folder=req.folder,
+            attachments=req.attachments,
+            is_html=req.is_html,
+            account_id=req.account_id,
+        )
+        return JSONResponse(content=result, status_code=200)
+    except Exception as e:
+        logger.error("回复邮件失败: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/forward-email", dependencies=[Depends(verify_api_key)])
+async def forward_email(req: ForwardEmailRequest):
+    """转发邮件"""
+    try:
+        from src.account_manager import AccountManager
+        from src.services.communication_service import CommunicationService
+
+        svc = CommunicationService(AccountManager())
+        result = await asyncio.to_thread(
+            svc.forward_email,
+            email_id=req.email_id,
+            to=req.to,
+            body=req.body,
+            folder=req.folder,
+            include_attachments=req.include_attachments,
+            account_id=req.account_id,
+        )
+        return JSONResponse(content=result, status_code=200)
+    except Exception as e:
+        logger.error("转发邮件失败: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/stats")
