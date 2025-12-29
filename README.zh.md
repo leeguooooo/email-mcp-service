@@ -230,6 +230,28 @@ sync_emails with action="stop"
 - 完全同步：每天凌晨2点进行完整同步
 - 离线浏览：同步后的邮件可离线查看和搜索
 
+## MCP 工具命令行
+
+项目新增 `mcp-email-cli`，可直接在命令行中调用所有 MCP 工具：
+
+```bash
+# 列出全部工具
+uv run mcp-email-cli list-tools
+
+# 查看某个工具的参数 Schema
+uv run mcp-email-cli schema list_emails
+
+# 通用调用（JSON 参数）
+uv run mcp-email-cli call list_emails --arg limit=5 --arg unread_only=false
+uv run mcp-email-cli call send_email --args '{"to":["a@test.com"],"subject":"hi","body":"hello"}'
+
+# 也可以直接用工具名作为子命令（参数来自 Schema 自动生成）
+uv run mcp-email-cli list_emails --limit 5 --no-unread-only
+uv run mcp-email-cli mark_emails --email-ids 1 2 --mark-as read
+```
+
+如果参数较复杂（如 `email_accounts`、嵌套对象），建议使用 `call` 并传入完整 JSON 对象。
+
 ## 命令行邮箱客户端（新）
 
 项目新增 `clients/mailbox_client` 子目录，提供独立的命令行界面，可以在不启动 MCP 客户端的情况下浏览所有已配置邮箱的邮件：

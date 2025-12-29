@@ -222,6 +222,28 @@ python scripts/email_monitor.py run
 python scripts/email_monitor.py status
 ```
 
+## MCP Tool CLI
+
+All MCP tools are now callable directly from the command line via `mcp-email-cli`.
+
+```bash
+# List all tools
+uv run mcp-email-cli list-tools
+
+# Show a tool's JSON schema
+uv run mcp-email-cli schema list_emails
+
+# Generic call with JSON args
+uv run mcp-email-cli call list_emails --arg limit=5 --arg unread_only=false
+uv run mcp-email-cli call send_email --args '{"to":["a@test.com"],"subject":"hi","body":"hello"}'
+
+# Or call tools as subcommands (flags are generated from the schema)
+uv run mcp-email-cli list_emails --limit 5 --no-unread-only
+uv run mcp-email-cli mark_emails --email-ids 1 2 --mark-as read
+```
+
+For complex parameters (e.g., `email_accounts`, nested objects), prefer the `call` form with a JSON object.
+
 ## Command-line Mailbox Client
 
 A standalone CLI lives under `clients/mailbox_client`, allowing you to browse emails across all configured accounts without launching an MCP client.
