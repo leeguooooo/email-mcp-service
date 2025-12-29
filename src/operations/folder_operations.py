@@ -3,6 +3,7 @@ Folder operations for email management
 """
 import imaplib
 import logging
+import re
 from typing import List, Dict, Any, Optional
 from email.header import decode_header
 
@@ -21,6 +22,40 @@ def _logout_safely(mail):
         mail.logout()
     except Exception:
         pass
+
+
+_IMAP_LIST_FLAGS_RE = re.compile(r"^\((?P<flags>[^)]*)\)")
+
+
+def _parse_imap_list_response(folder_data: bytes) -> Dict[str, str]:
+    """
+    Parse an IMAP LIST response line.
+
+    Example: b'(\\Sent) \"/\" \"&XfJT0ZAB-\"'
+    """
+    try:
+        line = folder_data.decode("utf-8", errors="ignore").strip()
+    except Exception:
+        line = str(folder_data)
+
+    flags_match = _IMAP_LIST_FLAGS_RE.match(line)
+    flags = flags_match.group("flags") if flags_match else ""
+
+    quoted = re.findall(r"\"([^\"]*)\"", line)
+    delimiter = quoted[-2] if len(quoted) >= 2 else ""
+    name = quoted[-1] if quoted else line.split()[-1] if line.split() else ""
+
+    return {"name": name, "flags": flags, "delimiter": delimiter}
+
+
+def _quote_mailbox(name: str) -> str:
+    if not name:
+        return name
+    escaped = name.replace('"', '\\"')
+    if escaped.startswith('"') and escaped.endswith('"'):
+        return escaped
+    return f'"{escaped}"'
+
 
 class FolderOperations:
     """Handles folder-related operations"""
@@ -49,33 +84,34 @@ class FolderOperations:
                 folder_tree = {}
                 
                 for folder_data in folders:
-                    # Parse folder data
-                    parts = folder_data.decode('utf-8').split(' "." ')
-                    if len(parts) >= 2:
-                        # Extract folder name (remove quotes)
-                        folder_name = parts[-1].strip('"')
-                        
-                        # Get folder attributes
-                        attributes = parts[0].split('(')[1].split(')')[0]
-                        
-                        # Get message count
-                        try:
-                            result, data = mail.select(folder_name, readonly=True)
-                            message_count = int(data[0]) if result == 'OK' else 0
-                        except:
-                            message_count = 0
-                        
-                        folder_info = {
-                            'name': folder_name,
-                            'attributes': attributes,
-                            'message_count': message_count,
-                            'path': folder_name
-                        }
-                        
-                        folder_list.append(folder_info)
-                        
-                        # Build folder tree
-                        self._add_to_tree(folder_tree, folder_name.split('.'), folder_info)
+                    parsed = _parse_imap_list_response(folder_data)
+                    folder_name = parsed.get("name", "")
+                    flags = parsed.get("flags", "")
+                    delimiter = parsed.get("delimiter", "")
+
+                    if not folder_name:
+                        continue
+
+                    # Get message count (best-effort)
+                    try:
+                        result, data = mail.select(_quote_mailbox(folder_name), readonly=True)
+                        message_count = int(data[0]) if result == "OK" and data and data[0] else 0
+                    except Exception:
+                        message_count = 0
+
+                    folder_info = {
+                        "name": folder_name,
+                        "attributes": flags,
+                        "delimiter": delimiter,
+                        "message_count": message_count,
+                        "path": folder_name,
+                    }
+
+                    folder_list.append(folder_info)
+
+                    # Build folder tree using delimiter (fallback to '.')
+                    delim = delimiter or "."
+                    self._add_to_tree(folder_tree, folder_name.split(delim), folder_info)
                 
                 return {
                     'success': True,

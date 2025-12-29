@@ -1,10 +1,49 @@
 """
 Folder service layer - Clean interface for folder/organization operations
 """
+import imaplib
 import logging
+import re
 from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_mailbox_name(folder: str) -> str:
+    """
+    Normalize mailbox name for IMAP commands.
+
+    - Encode non-ASCII mailbox names to IMAP UTF-7
+    - Quote to support spaces/special characters
+    """
+    if not folder:
+        return "INBOX"
+
+    folder_str = folder.strip() or "INBOX"
+    was_quoted = folder_str.startswith('"') and folder_str.endswith('"')
+    raw_name = folder_str[1:-1] if was_quoted else folder_str
+
+    try:
+        raw_name.encode("ascii")
+        encoded = raw_name
+    except UnicodeEncodeError:
+        try:
+            encoded_bytes = imaplib.IMAP4._encode_utf7(raw_name)
+            encoded = (
+                encoded_bytes.decode("ascii")
+                if isinstance(encoded_bytes, bytes)
+                else str(encoded_bytes)
+            )
+        except Exception:
+            encoded = raw_name
+
+    try:
+        return imaplib.IMAP4._quote(encoded)
+    except Exception:
+        if was_quoted:
+            return folder_str
+        escaped = encoded.replace('"', '\\"')
+        return f'"{escaped}"' if any(ch.isspace() for ch in escaped) else escaped
 
 
 class FolderService:
@@ -246,19 +285,51 @@ class FolderService:
                     for folder_info in folders_result.get('folders', []):
                         folder_name = folder_info['name']  # Extract name from dict
                         try:
-                            mail.select(folder_name, readonly=True)
-                            
-                            # Get UNSEEN count
-                            _, unseen_data = mail.search(None, 'UNSEEN')
-                            unseen_count = len(unseen_data[0].split()) if unseen_data[0] else 0
-                            
-                            # Get total count
-                            _, total_data = mail.search(None, 'ALL')
-                            total_count = len(total_data[0].split()) if total_data[0] else 0
+                            mailbox = _normalize_mailbox_name(folder_name)
+
+                            # Prefer STATUS to avoid expensive SEARCH ALL/UNSEEN.
+                            unseen_count = 0
+                            total_count = 0
+                            status_result, status_data = mail.status(
+                                mailbox, "(MESSAGES UNSEEN)"
+                            )
+                            if (
+                                status_result == "OK"
+                                and status_data
+                                and status_data[0]
+                            ):
+                                line = (
+                                    status_data[0].decode("utf-8", errors="ignore")
+                                    if isinstance(status_data[0], (bytes, bytearray))
+                                    else str(status_data[0])
+                                )
+                                m = re.search(r"MESSAGES\s+(\d+)", line, re.IGNORECASE)
+                                u = re.search(r"UNSEEN\s+(\d+)", line, re.IGNORECASE)
+                                total_count = int(m.group(1)) if m else 0
+                                unseen_count = int(u.group(1)) if u else 0
+                            else:
+                                # Fallback: SELECT + SEARCH UNSEEN (avoid SEARCH ALL).
+                                sel_result, sel_data = mail.select(mailbox, readonly=True)
+                                if sel_result != "OK":
+                                    raise Exception(
+                                        f"Cannot select folder '{folder_name}': {sel_data}"
+                                    )
+                                total_count = (
+                                    int(sel_data[0]) if sel_data and sel_data[0] else 0
+                                )
+                                search_result, unseen_data = mail.search(None, "UNSEEN")
+                                unseen_count = (
+                                    len(unseen_data[0].split())
+                                    if search_result == "OK"
+                                    and unseen_data
+                                    and unseen_data[0]
+                                    else 0
+                                )
                             
                             if include_empty or unseen_count > 0:
                                 all_folders.append({
                                     'name': folder_name,
+                                    'attributes': folder_info.get('attributes', ''),
                                     'unread_count': unseen_count,
                                     'total_count': total_count,
                                     'account': account.get('email', acc_id),
