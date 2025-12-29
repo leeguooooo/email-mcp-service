@@ -4,6 +4,7 @@
 import logging
 import email
 import email.utils
+from email.message import Message
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -61,6 +62,21 @@ class EmailSyncManager:
         sync_cfg = config.get('sync', {}) if isinstance(config.get('sync'), dict) else {}
         first_sync_days = sync_cfg.get('first_sync_days', config.get('first_sync_days', 180))
         incremental_sync_days = sync_cfg.get('incremental_sync_days', config.get('incremental_sync_days', 7))
+        sync_body_days = sync_cfg.get("sync_body_days", config.get("sync_body_days", 7))
+        sync_body_unread = sync_cfg.get(
+            "sync_body_unread", config.get("sync_body_unread", True)
+        )
+        sync_body_flagged = sync_cfg.get(
+            "sync_body_flagged", config.get("sync_body_flagged", True)
+        )
+        sync_body_max_rfc822_size_bytes = sync_cfg.get(
+            "sync_body_max_rfc822_size_bytes",
+            config.get("sync_body_max_rfc822_size_bytes", 2_000_000),
+        )
+        sync_body_max_emails_per_folder = sync_cfg.get(
+            "sync_body_max_emails_per_folder",
+            config.get("sync_body_max_emails_per_folder", 200),
+        )
         
         folders_cfg = config.get('folders', {})
         exclude_folders = folders_cfg.get('exclude_folders', config.get('exclude_folders', []))
@@ -70,6 +86,15 @@ class EmailSyncManager:
         return {
             "first_sync_days": first_sync_days or 180,
             "incremental_sync_days": incremental_sync_days or 7,
+            "sync_body_days": sync_body_days if sync_body_days is not None else 7,
+            "sync_body_unread": bool(sync_body_unread),
+            "sync_body_flagged": bool(sync_body_flagged),
+            "sync_body_max_rfc822_size_bytes": int(sync_body_max_rfc822_size_bytes)
+            if sync_body_max_rfc822_size_bytes is not None
+            else 2_000_000,
+            "sync_body_max_emails_per_folder": int(sync_body_max_emails_per_folder)
+            if sync_body_max_emails_per_folder is not None
+            else 200,
             "folders": {
                 "sync_all": sync_all,
                 "exclude_folders": exclude_folders,
@@ -90,6 +115,31 @@ class EmailSyncManager:
             sync_cfg = config.get('sync', {}) if isinstance(config.get('sync'), dict) else {}
             base['first_sync_days'] = sync_cfg.get('first_sync_days', config.get('first_sync_days', base['first_sync_days']))
             base['incremental_sync_days'] = sync_cfg.get('incremental_sync_days', config.get('incremental_sync_days', base['incremental_sync_days']))
+            base['sync_body_days'] = sync_cfg.get(
+                'sync_body_days', config.get('sync_body_days', base.get('sync_body_days', 7))
+            )
+            base['sync_body_unread'] = sync_cfg.get(
+                'sync_body_unread',
+                config.get('sync_body_unread', base.get('sync_body_unread', True)),
+            )
+            base['sync_body_flagged'] = sync_cfg.get(
+                'sync_body_flagged',
+                config.get('sync_body_flagged', base.get('sync_body_flagged', True)),
+            )
+            base['sync_body_max_rfc822_size_bytes'] = sync_cfg.get(
+                'sync_body_max_rfc822_size_bytes',
+                config.get(
+                    'sync_body_max_rfc822_size_bytes',
+                    base.get('sync_body_max_rfc822_size_bytes', 2_000_000),
+                ),
+            )
+            base['sync_body_max_emails_per_folder'] = sync_cfg.get(
+                'sync_body_max_emails_per_folder',
+                config.get(
+                    'sync_body_max_emails_per_folder',
+                    base.get('sync_body_max_emails_per_folder', 200),
+                ),
+            )
             
             folders_cfg = config.get('folders', {})
             base_folders = base.get('folders', {})
@@ -422,6 +472,10 @@ class EmailSyncManager:
         added_count = 0
         updated_count = 0
         batch_size = 50  # 批量处理大小
+        prefetch_state = {
+            "remaining": int(self.config.get("sync_body_max_emails_per_folder", 200)),
+            "prefetched": 0,
+        }
         
         # 分批处理邮件
         for i in range(0, len(email_ids), batch_size):
@@ -430,7 +484,7 @@ class EmailSyncManager:
             
             try:
                 batch_added, batch_updated = self._process_email_batch(
-                    mail, account_id, folder_id, batch
+                    mail, account_id, folder_id, batch, prefetch_state=prefetch_state
                 )
                 added_count += batch_added
                 updated_count += batch_updated
@@ -442,11 +496,18 @@ class EmailSyncManager:
                 logger.error(f"Failed to process email batch: {e}")
                 continue
         
+        if prefetch_state.get("prefetched", 0):
+            logger.info(
+                "Prefetched %s email bodies for account=%s folder_id=%s",
+                prefetch_state.get("prefetched"),
+                account_id,
+                folder_id,
+            )
         logger.info(f"Folder sync completed: {added_count} added, {updated_count} updated")
         return added_count, updated_count
     
     def _process_email_batch(self, mail, account_id: str, folder_id: int, 
-                           email_ids: List[bytes]) -> Tuple[int, int]:
+                           email_ids: List[bytes], *, prefetch_state: Dict[str, Any]) -> Tuple[int, int]:
         """处理邮件批次"""
         added_count = 0
         updated_count = 0
@@ -454,7 +515,9 @@ class EmailSyncManager:
         for email_id in email_ids:
             try:
                 # 获取邮件头部信息
-                result, data = mail.uid('fetch', email_id, '(RFC822.HEADER FLAGS UID)')
+                result, data = mail.uid(
+                    'fetch', email_id, '(RFC822.HEADER FLAGS UID RFC822.SIZE)'
+                )
                 if result != 'OK':
                     continue
                 
@@ -470,6 +533,16 @@ class EmailSyncManager:
                         added_count += 1
                     else:
                         updated_count += 1
+
+                    # Best-effort prefetch body into email_content (mature-client behavior)
+                    try:
+                        if self._should_prefetch_body(email_data, prefetch_state=prefetch_state):
+                            if not self.db.has_email_content(email_db_id):
+                                self._prefetch_and_store_email_content(
+                                    mail, email_id, email_db_id, email_data, prefetch_state=prefetch_state
+                                )
+                    except Exception as e:
+                        logger.debug(f"Body prefetch skipped due to error: {e}")
                 
             except Exception as e:
                 logger.warning(f"Failed to process email {email_id}: {e}")
@@ -484,6 +557,7 @@ class EmailSyncManager:
             uid = None
             flags = []
             header_data = None
+            rfc822_size: Optional[int] = None
             
             for response_part in fetch_data:
                 if isinstance(response_part, tuple):
@@ -499,6 +573,14 @@ class EmailSyncManager:
                         flags_match = re.search(r'FLAGS \((.*?)\)', response_str)
                         if flags_match:
                             flags = flags_match.group(1).split()
+
+                    if "RFC822.SIZE" in response_str:
+                        size_match = re.search(r'RFC822\.SIZE (\d+)', response_str)
+                        if size_match:
+                            try:
+                                rfc822_size = int(size_match.group(1))
+                            except Exception:
+                                rfc822_size = None
                     
                     header_data = response_part[1]
             
@@ -547,12 +629,140 @@ class EmailSyncManager:
                 'is_read': is_read,
                 'is_flagged': is_flagged,
                 'has_attachments': self._has_attachments(msg),
-                'size_bytes': len(header_data)
+                'size_bytes': rfc822_size or len(header_data),
+                'rfc822_size': rfc822_size,
             }
             
         except Exception as e:
             logger.error(f"Failed to parse email data: {e}")
             return None
+
+    def _should_prefetch_body(self, email_data: Dict[str, Any], *, prefetch_state: Dict[str, Any]) -> bool:
+        """Decide whether to prefetch and cache body for this email."""
+        remaining = int(prefetch_state.get("remaining", 0) or 0)
+        if remaining <= 0:
+            return False
+
+        max_size = int(self.config.get("sync_body_max_rfc822_size_bytes", 2_000_000) or 0)
+        if max_size > 0:
+            size = email_data.get("rfc822_size") or email_data.get("size_bytes") or 0
+            try:
+                if int(size) > max_size:
+                    return False
+            except Exception:
+                # Unknown size: allow; fetch will be size-gated after download.
+                pass
+
+        # Always prefetch unread/flagged when enabled.
+        if bool(self.config.get("sync_body_unread", True)) and not bool(email_data.get("is_read")):
+            return True
+        if bool(self.config.get("sync_body_flagged", True)) and bool(email_data.get("is_flagged")):
+            return True
+
+        # Prefetch recent emails within N days.
+        days = int(self.config.get("sync_body_days", 7) or 0)
+        if days <= 0:
+            return False
+        sent_at = email_data.get("date_sent")
+        if not sent_at:
+            return False
+        try:
+            return sent_at >= (datetime.now() - timedelta(days=days))
+        except Exception:
+            return False
+
+    def _prefetch_and_store_email_content(
+        self,
+        mail,
+        uid: bytes,
+        email_db_id: int,
+        email_data: Dict[str, Any],
+        *,
+        prefetch_state: Dict[str, Any],
+    ) -> None:
+        """Fetch BODY.PEEK[] for one email and store extracted plain/html into email_content."""
+        remaining = int(prefetch_state.get("remaining", 0) or 0)
+        if remaining <= 0:
+            return
+
+        raw_email = self._fetch_email_bytes_peek(mail, uid)
+        if not raw_email:
+            return
+
+        max_size = int(self.config.get("sync_body_max_rfc822_size_bytes", 2_000_000) or 0)
+        if max_size > 0 and len(raw_email) > max_size:
+            return
+
+        plain_text, html_text = self._extract_plain_and_html(raw_email)
+        if not plain_text and not html_text:
+            return
+
+        ok = self.db.upsert_email_content(
+            email_db_id,
+            plain_text=plain_text or None,
+            html_text=html_text or None,
+            headers=None,
+            raw_size=len(raw_email),
+        )
+        if ok:
+            prefetch_state["prefetched"] = int(prefetch_state.get("prefetched", 0) or 0) + 1
+            prefetch_state["remaining"] = remaining - 1
+
+    def _fetch_email_bytes_peek(self, mail, uid: bytes) -> Optional[bytes]:
+        """Fetch full raw email bytes without setting \\Seen (best-effort)."""
+        try:
+            result, data = mail.uid("fetch", uid, "(BODY.PEEK[])")
+            if result != "OK" or not data:
+                return None
+            for part in data:
+                if isinstance(part, tuple) and part[1]:
+                    return part[1]
+            return None
+        except Exception:
+            return None
+
+    def _extract_plain_and_html(self, raw_email: bytes) -> Tuple[str, str]:
+        """Extract first text/plain and text/html parts from raw RFC822 bytes."""
+        try:
+            msg = email.message_from_bytes(raw_email)
+        except Exception:
+            return "", ""
+
+        plain_text = ""
+        html_text = ""
+
+        def _decode_part(part: Message) -> str:
+            payload = part.get_payload(decode=True)
+            if payload is None:
+                return ""
+            charset = part.get_content_charset() or "utf-8"
+            try:
+                return payload.decode(charset, errors="replace")
+            except Exception:
+                try:
+                    return payload.decode("utf-8", errors="replace")
+                except Exception:
+                    return ""
+
+        if msg.is_multipart():
+            for part in msg.walk():
+                if part.get_content_maintype() == "multipart":
+                    continue
+                content_disposition = str(part.get("Content-Disposition", "")).lower()
+                if "attachment" in content_disposition:
+                    continue
+                ctype = part.get_content_type()
+                if ctype == "text/plain" and not plain_text:
+                    plain_text = _decode_part(part)
+                elif ctype == "text/html" and not html_text:
+                    html_text = _decode_part(part)
+                if plain_text and html_text:
+                    break
+        else:
+            # Single-part message, treat as plain text.
+            plain_text = _decode_part(msg)
+
+        return plain_text, html_text
     
     def _parse_email_address(self, address_str: str) -> Tuple[str, str]:
         """解析邮件地址，返回(显示名称, 邮件地址)"""

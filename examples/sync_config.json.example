@@ -10,7 +10,12 @@
     "full_sync_hours": 24,
     "startup_delay_seconds": 30,
     "first_sync_days": 180,
-    "incremental_sync_days": 7
+    "incremental_sync_days": 7,
+    "sync_body_days": 7,
+    "sync_body_unread": true,
+    "sync_body_flagged": true,
+    "sync_body_max_rfc822_size_bytes": 2000000,
+    "sync_body_max_emails_per_folder": 200
   },
   "quiet_hours": {
     "enabled": false,

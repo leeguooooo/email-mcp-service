@@ -211,12 +211,34 @@ class EmailSyncDatabase:
         with self._lock:
             try:
                 last_sync_value = last_sync or datetime.now().isoformat()
-                cursor = self.conn.execute("""
-                    INSERT OR REPLACE INTO folders 
-                    (account_id, name, display_name, message_count, unread_count, last_sync)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (account_id, folder_name, display_name or folder_name, 
-                      message_count, unread_count, last_sync_value))
+                # IMPORTANT: Avoid INSERT OR REPLACE here.
+                # REPLACE deletes the existing row and inserts a new one, which changes the
+                # folder id and breaks foreign keys from emails.folder_id -> folders.id.
+                self.conn.execute(
+                    """
+                    INSERT INTO folders (
+                        account_id,
+                        name,
+                        display_name,
+                        message_count,
+                        unread_count,
+                        last_sync
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(account_id, name) DO UPDATE SET
+                        display_name = excluded.display_name,
+                        message_count = excluded.message_count,
+                        unread_count = excluded.unread_count,
+                        last_sync = excluded.last_sync
+                    """,
+                    (
+                        account_id,
+                        folder_name,
+                        display_name or folder_name,
+                        message_count,
+                        unread_count,
+                        last_sync_value,
+                    ),
+                )
                 
                 self.conn.commit()
                 
@@ -269,6 +291,69 @@ class EmailSyncDatabase:
             except sqlite3.Error as e:
                 logger.error(f"Failed to add/update email: {e}")
                 return None, False
+
+    def has_email_content(self, email_id: int) -> bool:
+        """Return True when email_content exists for the given email row id."""
+        with self._lock:
+            try:
+                row = self.conn.execute(
+                    """
+                    SELECT 1
+                    FROM email_content
+                    WHERE email_id = ?
+                      AND (plain_text IS NOT NULL OR html_text IS NOT NULL)
+                    LIMIT 1
+                    """,
+                    (int(email_id),),
+                ).fetchone()
+                return row is not None
+            except Exception:
+                return False
+
+    def upsert_email_content(
+        self,
+        email_id: int,
+        plain_text: Optional[str],
+        html_text: Optional[str],
+        headers: Optional[Dict[str, Any]] = None,
+        raw_size: Optional[int] = None,
+    ) -> bool:
+        """Insert or update cached email body in email_content (best-effort)."""
+        with self._lock:
+            try:
+                headers_json: Optional[str]
+                if headers is None:
+                    headers_json = None
+                else:
+                    try:
+                        headers_json = json.dumps(headers, ensure_ascii=False)
+                    except Exception:
+                        headers_json = str(headers)
+
+                self.conn.execute(
+                    """
+                    INSERT INTO email_content(email_id, plain_text, html_text, headers, raw_size)
+                    VALUES(?, ?, ?, ?, ?)
+                    ON CONFLICT(email_id) DO UPDATE SET
+                        plain_text = excluded.plain_text,
+                        html_text = excluded.html_text,
+                        headers = excluded.headers,
+                        raw_size = excluded.raw_size,
+                        content_loaded_at = CURRENT_TIMESTAMP
+                    """,
+                    (
+                        int(email_id),
+                        plain_text,
+                        html_text,
+                        headers_json,
+                        int(raw_size) if raw_size is not None else None,
+                    ),
+                )
+                self.conn.commit()
+                return True
+            except Exception as e:
+                logger.debug(f"Failed to upsert email_content for {email_id}: {e}")
+                return False
     
     def _insert_email(self, email_data: Dict[str, Any], content_hash: str) -> int:
         """插入新邮件"""

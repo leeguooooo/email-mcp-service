@@ -19,6 +19,14 @@ class SyncConfigManager:
             "interval_minutes": 5,  # 增量同步间隔（分钟）
             "full_sync_hours": 24,   # 完全同步间隔（小时）
             "startup_delay_seconds": 30,  # 启动延迟，避免启动时资源冲突
+            # 正文缓存策略（成熟邮件客户端通常“元数据全量 + 正文受控预取”）
+            # - 同步时对最近/未读邮件预取正文到本地 email_content，打开详情即可秒开
+            # - 为避免数据库暴涨，建议限制天数、单封大小和每个文件夹预取数量
+            "sync_body_days": 7,  # 预取最近 N 天邮件正文（0 表示不按时间预取）
+            "sync_body_unread": True,  # 始终预取未读邮件正文
+            "sync_body_flagged": True,  # 始终预取已加星/旗标邮件正文
+            "sync_body_max_rfc822_size_bytes": 2_000_000,  # 单封邮件最大预取大小（字节）
+            "sync_body_max_emails_per_folder": 200,  # 每次同步每个文件夹最多预取正文数量
         },
         "quiet_hours": {
             "enabled": False,
@@ -132,6 +140,18 @@ class SyncConfigManager:
         full_sync_hours = self.config.get('sync', {}).get('full_sync_hours', 24)
         if not isinstance(full_sync_hours, int) or full_sync_hours < 1 or full_sync_hours > 168:
             errors.append("sync.full_sync_hours must be between 1 and 168")
+
+        # 验证正文缓存策略
+        sync_cfg = self.config.get("sync", {}) or {}
+        body_days = sync_cfg.get("sync_body_days", 7)
+        if not isinstance(body_days, int) or body_days < 0 or body_days > 3650:
+            errors.append("sync.sync_body_days must be between 0 and 3650")
+        max_size = sync_cfg.get("sync_body_max_rfc822_size_bytes", 2_000_000)
+        if not isinstance(max_size, int) or max_size < 0 or max_size > 200_000_000:
+            errors.append("sync.sync_body_max_rfc822_size_bytes must be between 0 and 200000000")
+        max_per_folder = sync_cfg.get("sync_body_max_emails_per_folder", 200)
+        if not isinstance(max_per_folder, int) or max_per_folder < 0 or max_per_folder > 10_000:
+            errors.append("sync.sync_body_max_emails_per_folder must be between 0 and 10000")
         
         # 验证静默时间
         quiet_hours = self.config.get('quiet_hours', {})
