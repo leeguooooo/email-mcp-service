@@ -8,6 +8,7 @@ import html
 import json
 import logging
 import os
+import quopri
 import re
 import time
 from datetime import datetime, timedelta, timezone
@@ -509,6 +510,58 @@ class DailyDigestService:
         cleaned = html.unescape(cleaned)
         return re.sub(r"\s+", " ", cleaned).strip()
 
+    def _decode_quoted_printable(self, text: str) -> str:
+        if not text:
+            return ""
+        try:
+            decoded = quopri.decodestring(text.encode("utf-8", errors="ignore"))
+            return decoded.decode("utf-8", errors="ignore")
+        except Exception:
+            return text
+
+    def _is_noise_line(self, line: str) -> bool:
+        lowered = line.lower()
+        if lowered.startswith("content-type:"):
+            return True
+        if lowered.startswith("content-transfer-encoding:"):
+            return True
+        if lowered.startswith("mime-version:"):
+            return True
+        if lowered.startswith("charset=") or lowered.startswith("boundary="):
+            return True
+        if line.startswith("--") and len(line) > 8:
+            return True
+        if line.startswith("------=_Part_") or line.startswith("----==_mimepart"):
+            return True
+        if line.startswith("--_----"):
+            return True
+        if re.match(r"^--[0-9a-f]{8,}", line, re.IGNORECASE):
+            return True
+        if re.match(r"^[-=]{5,}$", line):
+            return True
+        return False
+
+    def _clean_preview(self, text: str) -> str:
+        if not text:
+            return ""
+        if "quoted-printable" in text.lower() or "=3d" in text.lower() or "=\n" in text:
+            text = self._decode_quoted_printable(text)
+
+        text = text.replace("\r", "\n")
+        text = self._strip_html(text)
+
+        lines = []
+        for line in text.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if self._is_noise_line(stripped):
+                continue
+            lines.append(stripped)
+
+        cleaned = " ".join(lines)
+        return re.sub(r"\s+", " ", cleaned).strip()
+
     def _truncate_text(self, text: str, max_len: int) -> str:
         if len(text) <= max_len:
             return text
@@ -564,7 +617,7 @@ class DailyDigestService:
             preview = email.get("html_body") or preview
         if email.get("has_html") or email.get("html_body"):
             preview = self._strip_html(preview)
-        preview = preview.replace("\n", " ").strip()
+        preview = self._clean_preview(preview)
         if max_len and len(preview) > max_len:
             return preview[: max_len - 3] + "..."
         return preview
