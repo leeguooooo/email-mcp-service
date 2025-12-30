@@ -90,6 +90,11 @@ email_sync.db*
 /sync_config.json
 /sync_health_history.json
 
+# Legacy config files (moved to data/)
+/notification_config.json
+/email_monitor_config.json
+/daily_digest_config.json
+
 # Temporary files
 *.tmp
 *.bak

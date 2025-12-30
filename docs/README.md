@@ -10,7 +10,6 @@ These guides will help you get started quickly:
 
 - **[HTTP API Quick Start](guides/HTTP_API_QUICK_START.md)** - Set up the HTTP API in minutes
 - **[Email Translation Workflow](guides/EMAIL_TRANSLATE_WORKFLOW_GUIDE.md)** - Automatically translate and summarize emails
-- **[n8n Email Monitoring](guides/N8N_EMAIL_MONITORING_GUIDE.md)** - Set up automated email monitoring with AI
 - **[Lark/Feishu Setup](guides/LARK_SETUP_GUIDE.md)** - Configure Lark/Feishu webhooks
 
 ---
@@ -25,7 +24,6 @@ These guides will help you get started quickly:
 
 ### Workflows & Integration
 
-- **[n8n API Setup](guides/N8N_API_SETUP_GUIDE.md)** - Configure n8n API integration
 - **[Translation Workflow Summary](guides/TRANSLATION_WORKFLOW_SUMMARY.md)** - Email translation workflow overview
 - **[Open Source Readiness](guides/OPEN_SOURCE_READINESS.md)** - Preparing for open source release
 

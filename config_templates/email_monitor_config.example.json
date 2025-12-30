@@ -5,14 +5,9 @@
     "account_id": null,
     "folder": "INBOX"
   },
-  "ai_filter": {
-    "enabled": true,
-    "config_path": "ai_filter_config.json",
-    "priority_threshold": 0.7
-  },
   "notification": {
     "enabled": true,
-    "config_path": "notification_config.json",
+    "config_path": "data/notification_config.json",
     "webhook_names": null
   },
   "deduplication": {

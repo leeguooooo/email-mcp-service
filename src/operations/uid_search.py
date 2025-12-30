@@ -1,6 +1,7 @@
 """
 IMAP UID-based search implementation for better performance and stability
 """
+import html
 import imaplib
 import logging
 from typing import List, Dict, Any, Optional, Tuple
@@ -307,14 +308,24 @@ class UIDSearchEngine:
         """Get email body preview"""
         try:
             body = ""
+            html_body = ""
             
             for part in msg.walk():
-                if part.get_content_type() == "text/plain":
-                    payload = part.get_payload(decode=True)
-                    if payload:
-                        charset = part.get_content_charset() or 'utf-8'
-                        body = payload.decode(charset, errors='ignore')
-                        break
+                content_type = part.get_content_type()
+                payload = part.get_payload(decode=True)
+                if not payload:
+                    continue
+                charset = part.get_content_charset() or 'utf-8'
+                decoded = payload.decode(charset, errors='ignore')
+                if content_type == "text/plain" and not body:
+                    body = decoded
+                elif content_type == "text/html" and not html_body:
+                    html_body = decoded
+                if body:
+                    break
+
+            if not body and html_body:
+                body = self._strip_html(html_body)
             
             # Clean and truncate
             body = re.sub(r'\s+', ' ', body).strip()
@@ -324,3 +335,11 @@ class UIDSearchEngine:
             return body
         except:
             return ""
+
+    def _strip_html(self, text: str) -> str:
+        if not text:
+            return ""
+        cleaned = re.sub(r"(?is)<(script|style).*?>.*?(</\\1>)", " ", text)
+        cleaned = re.sub(r"(?s)<[^>]+>", " ", cleaned)
+        cleaned = html.unescape(cleaned)
+        return re.sub(r"\s+", " ", cleaned).strip()

@@ -6,33 +6,25 @@
 [![Tests](https://img.shields.io/badge/tests-71%2F72%20passing-brightgreen)](./tests)
 [![GitHub Sponsors](https://img.shields.io/github/sponsors/leeguooooo?logo=github)](https://github.com/sponsors/leeguooooo)
 
-支持多邮箱账户统一管理的 MCP 邮件服务，具备 **AI 智能监控和通知功能**。
+支持多邮箱账户统一管理的 MCP 邮件服务，具备 **本地定时监控与通知**。
 
-> **新功能**：邮件翻译与总结 - 自动翻译非中文邮件，生成摘要，并发送到飞书！
+> **新功能**：每日邮件汇总 + AI 分类，支持飞书/Lark 与 Telegram，本地定时执行。
 
-## 新功能：n8n + AI 邮件监控
+## 本地定时监控与汇总
 
-**自动监控邮件，使用 AI 智能筛选重要邮件，并实时通知到团队群聊！**
-
-- **AI 智能筛选**：使用 OpenAI/Claude 智能识别重要邮件
-- **多平台通知**：支持飞书/钉钉/企业微信/Slack
-- **自动化监控**：n8n 工作流每 5 分钟自动运行
+- **多平台通知**：支持飞书/Lark、Telegram、自定义 Webhook
+- **本地定时**：支持 `schedule` 守护进程或 cron
 - **去重机制**：防止重复通知
-- **生产就绪**：完善的错误处理和回退机制
 
 ```bash
-# 1. 设置监控系统
-python scripts/setup_n8n_monitoring.py
+# 1. 复制每日汇总配置
+cp config_templates/daily_digest_config.example.json data/daily_digest_config.json
 
-# 2. 配置环境变量
-export FEISHU_WEBHOOK="your_webhook_url"
-export OPENAI_API_KEY="your_api_key"  # AI 筛选可选
+# 2. 单次运行
+uv run python scripts/daily_email_digest.py run
 
-# 3. 导入 n8n 工作流
-# 在你的 n8n 实例中导入 n8n/email_monitoring_workflow.json
-
-# 4. 开始监控！
-# 系统将每 5 分钟自动检查邮件
+# 3. 启动本地定时
+uv run python scripts/daily_email_digest.py daemon
 ```
 
 ## 支持的邮箱
@@ -301,7 +293,6 @@ mcp-email-service/
 │   ├── guides/               # 用户指南
 │   └── archive/              # 历史文档
 ├── scripts/                   # 实用脚本
-├── n8n/                      # n8n 工作流模板
 ├── config_templates/         # 配置示例
 ├── clients/                  # 客户端示例与工具
 │   └── mailbox_client/       # 命令行邮箱浏览客户端
@@ -323,14 +314,12 @@ mcp-email-service/
 ### 快速入门指南
 - **[docs/guides/EMAIL_TRANSLATE_WORKFLOW_GUIDE.md](docs/guides/EMAIL_TRANSLATE_WORKFLOW_GUIDE.md)** - 邮件翻译与摘要工作流
 - **[docs/guides/HTTP_API_QUICK_START.md](docs/guides/HTTP_API_QUICK_START.md)** - HTTP API 快速开始
-- **[docs/guides/N8N_EMAIL_MONITORING_GUIDE.md](docs/guides/N8N_EMAIL_MONITORING_GUIDE.md)** - n8n 邮件监控指南
 - **[docs/guides/LARK_SETUP_GUIDE.md](docs/guides/LARK_SETUP_GUIDE.md)** - 飞书 Webhook 设置
 
 ### 技术文档
 - **[docs/README.md](docs/README.md)** - 完整文档索引
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - 系统架构设计
 - **[docs/database_design.md](docs/database_design.md)** - 数据库设计
-- **[n8n/README.md](n8n/README.md)** - n8n 工作流详情
 - **[config_templates/](config_templates/)** - 配置模板示例
 - **[data/README.md](data/README.md)** - 数据目录指南
 

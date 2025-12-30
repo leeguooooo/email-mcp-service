@@ -167,43 +167,28 @@ mcp-email-service/
 │       ├── FINAL_DEPLOYMENT_CHECKLIST.md # 最终部署清单
 │       ├── HTTP_API_QUICK_START.md  # HTTP API 快速开始
 │       ├── LARK_SETUP_GUIDE.md      # 飞书设置指南
-│       ├── N8N_API_SETUP_GUIDE.md   # n8n API 设置
-│       ├── N8N_EMAIL_MONITORING_GUIDE.md # n8n 邮件监控
 │       ├── OPEN_SOURCE_READINESS.md # 开源准备
 │       ├── PRODUCTION_DEPLOYMENT_GUIDE.md # 生产部署指南
 │       ├── SECURITY_SETUP_GUIDE.md  # 安全设置指南
 │       └── TRANSLATION_WORKFLOW_SUMMARY.md # 翻译工作流总结
 │
 ├── 🔌 脚本 (scripts/)
-│   ├── ai_email_filter.py           # AI 邮件过滤
-│   ├── call_email_tool.py           # 邮件工具调用
 │   ├── create_env.sh                # 环境创建脚本
-│   ├── deploy_http_workflow.py      # HTTP 工作流部署
+│   ├── daily_email_digest.py        # 每日汇总调度
 │   ├── email_monitor_api.py         # 邮件监控 API
 │   ├── email_monitor.py             # 邮件监控
 │   ├── email_translator.py          # 邮件翻译
 │   ├── init_sync.py                 # 初始化同步
 │   ├── monitor_sync.py ⭐ 新增       # 监控同步状态
 │   ├── notification_service.py      # 通知服务
-│   ├── setup_n8n_monitoring.py      # 设置 n8n 监控
-│   ├── setup_n8n_workflow.py        # 设置 n8n 工作流
-│   ├── setup_n8n.sh                 # n8n 设置脚本
 │   ├── test_connection.py           # 测试连接
 │   ├── test_lark_webhook.py         # 测试飞书 webhook
-│   ├── test_n8n_api.py              # 测试 n8n API
 │   └── test_sync.py                 # 测试同步
 │
-├── 🌐 n8n 工作流 (n8n/)
-│   ├── README.md                    # n8n 使用指南
-│   ├── email_monitoring_workflow.json # 邮件监控工作流
-│   ├── email_monitoring_http_workflow.json # HTTP 监控工作流
-│   └── email_translate_workflow.json # 邮件翻译工作流
-│
 ├── 📝 配置模板 (config_templates/)
-│   ├── ai_filter_config.example.json # AI 过滤配置示例
+│   ├── daily_digest_config.example.json # 每日汇总配置示例
 │   ├── email_monitor_config.example.json # 邮件监控配置示例
 │   ├── env.example                  # 环境变量示例
-│   ├── env.n8n.example              # n8n 环境变量示例
 │   └── notification_config.example.json # 通知配置示例
 │
 ├── 📦 示例 (examples/)
@@ -231,7 +216,6 @@ mcp-email-service/
 | 文档文件 | 40+ | 包括指南和归档
 | 配置文件 | 10+ | 项目和功能配置
 | 脚本文件 | 15+ | 实用工具脚本
-| 工作流文件 | 3 | n8n 自动化工作流
 
 ---
 
@@ -385,7 +369,7 @@ mcp-email-service/
 | 🧪 **运行测试** | `tests/run_tests.py` |
 | 📚 **阅读文档** | `docs/README.md` |
 | 🐳 **Docker 部署** | `docker/README.md` |
-| 🌐 **n8n 工作流** | `n8n/README.md` |
+| ⏰ **本地定时任务** | `scripts/daily_email_digest.py`, `scripts/email_monitor.py` |
 | 📝 **查看日志** | `data/logs/` |
 | 💰 **赞助项目** | `.github/FUNDING.yml` |
 

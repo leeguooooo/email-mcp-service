@@ -2,7 +2,7 @@
 """
 Inbox organization assistant.
 
-分析最近邮件，结合 AI 过滤结果，给出垃圾邮件/营销邮件/低优先级通知的整理建议，
+分析最近邮件，基于规则给出垃圾邮件/营销邮件/低优先级通知的整理建议，
 并对需要关注的邮件生成中文摘要。
 """
 import argparse
@@ -10,6 +10,7 @@ import json
 import logging
 import sys
 from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -22,10 +23,20 @@ if str(repo_root) not in sys.path:
 from src.account_manager import AccountManager  # noqa: E402
 from src.services.email_service import EmailService  # noqa: E402
 
-from scripts.ai_email_filter import AIEmailFilter, FilterResult  # noqa: E402
 from scripts.email_translator import EmailTranslator  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class FilterResult:
+    """Rule-based filter result."""
+    email_id: str
+    is_important: bool
+    priority_score: float
+    reason: str
+    category: str = "general"
+    suggested_action: str = "none"
 
 
 class InboxOrganizer:
@@ -47,6 +58,39 @@ class InboxOrganizer:
     MARKETING_CATEGORIES = {"marketing", "promotion", "ads", "advertisement"}
     NEWSLETTER_CATEGORIES = {"newsletter", "newsletters", "digest"}
     SYSTEM_CATEGORIES = {"system", "notification", "alert"}
+    IMPORTANT_CATEGORIES = {"urgent", "work", "finance"}
+    IMPORTANT_KEYWORDS = ["urgent", "important", "asap", "deadline", "紧急", "重要", "截止"]
+    CATEGORY_KEYWORDS = {
+        "spam": ["lottery", "winner", "bitcoin", "crypto", "中奖", "恭喜", "免费", "借款"],
+        "marketing": ["sale", "discount", "promo", "offer", "促销", "优惠", "活动", "推广"],
+        "newsletter": ["newsletter", "digest", "update", "周报", "月报", "周刊"],
+        "system": ["alert", "notification", "security", "login", "系统", "登录", "安全"],
+        "urgent": ["urgent", "asap", "immediately", "紧急", "立即", "尽快"],
+        "finance": ["invoice", "payment", "bank", "receipt", "发票", "付款", "银行", "账单"],
+        "work": ["meeting", "project", "deadline", "review", "report", "会议", "项目", "报告"],
+        "personal": ["family", "friend", "birthday", "家人", "朋友", "生日"]
+    }
+    CATEGORY_PRIORITY = [
+        "spam",
+        "marketing",
+        "newsletter",
+        "system",
+        "urgent",
+        "finance",
+        "work",
+        "personal"
+    ]
+    CATEGORY_SCORE = {
+        "spam": 0.1,
+        "marketing": 0.2,
+        "newsletter": 0.3,
+        "system": 0.4,
+        "urgent": 0.9,
+        "finance": 0.8,
+        "work": 0.7,
+        "personal": 0.6,
+        "general": 0.5
+    }
 
     def __init__(
         self,
@@ -62,10 +106,7 @@ class InboxOrganizer:
 
         self.account_manager = AccountManager()
         self.email_service = EmailService(self.account_manager)
-        self.filter_service = AIEmailFilter()
-        self.priority_threshold = float(
-            self.filter_service.config.get("priority_threshold", 0.7)
-        )
+        self.priority_threshold = 0.7
 
     # Public API ---------------------------------------------------------
 
@@ -197,23 +238,48 @@ class InboxOrganizer:
     def _classify_emails(
         self, emails: List[Dict[str, Any]]
     ) -> Dict[str, FilterResult]:
-        """Run AI filter and return mapping of email_id -> FilterResult."""
-        filter_results = self.filter_service.filter_emails(emails)
+        """Run rule-based classification and return mapping of email_id -> FilterResult."""
         result_map: Dict[str, FilterResult] = {}
 
-        for item in filter_results:
-            if isinstance(item, FilterResult):
-                result_map[item.email_id] = item
-            elif isinstance(item, dict):
-                # Fallback when filter_emails returns dict (e.g. errors)
-                result_map[item.get("email_id", "")] = FilterResult(
-                    email_id=item.get("email_id", ""),
-                    is_important=item.get("is_important", False),
-                    priority_score=float(item.get("priority_score", 0.5)),
-                    reason=item.get("reason", "AI 过滤结果"),
-                    category=item.get("category", "general"),
-                    suggested_action=item.get("suggested_action", "none"),
-                )
+        for email in emails:
+            email_id = email.get("id", "")
+            subject = email.get("subject", "")
+            sender = email.get("from", "")
+            preview = email.get("body_preview", "")
+            text = f"{subject} {sender} {preview}".lower()
+
+            category = "general"
+            matched_keyword = None
+            for name in self.CATEGORY_PRIORITY:
+                keywords = self.CATEGORY_KEYWORDS.get(name, [])
+                for keyword in keywords:
+                    if keyword.lower() in text:
+                        category = name
+                        matched_keyword = keyword
+                        break
+                if matched_keyword:
+                    break
+
+            is_important = category in self.IMPORTANT_CATEGORIES or any(
+                keyword.lower() in text for keyword in self.IMPORTANT_KEYWORDS
+            )
+            score = self.CATEGORY_SCORE.get(category, 0.5)
+            if is_important:
+                score = max(score, 0.8)
+
+            reason_parts = [f"规则匹配: {category}"]
+            if matched_keyword:
+                reason_parts.append(f"关键词:{matched_keyword}")
+            reason = "；".join(reason_parts)
+
+            result_map[email_id] = FilterResult(
+                email_id=email_id,
+                is_important=is_important,
+                priority_score=score,
+                reason=reason,
+                category=category,
+                suggested_action="none",
+            )
 
         return result_map
 
@@ -304,7 +370,7 @@ class InboxOrganizer:
             return self.ACTION_MARK_AS_READ, "系统/安全通知"
 
         if not filter_result.is_important and score < self.priority_threshold:
-            return self.ACTION_MARK_AS_READ, "AI 判断重要性较低"
+            return self.ACTION_MARK_AS_READ, "规则判断重要性较低"
 
         return self.ACTION_ATTENTION, None
 

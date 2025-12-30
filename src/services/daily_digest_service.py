@@ -1,0 +1,977 @@
+"""
+Daily email digest service.
+"""
+from __future__ import annotations
+
+import hashlib
+import html
+import json
+import logging
+import os
+import re
+import time
+from datetime import datetime, timedelta, timezone
+from email import utils as email_utils
+from typing import Any, Dict, List, Optional, Tuple
+
+import requests
+
+from ..config.digest_config import DigestConfigManager
+from ..config.paths import DIGEST_CONFIG_JSON
+
+logger = logging.getLogger(__name__)
+
+
+class DailyDigestService:
+    """Daily digest workflow for yesterday's emails."""
+
+    def __init__(
+        self,
+        config_path: Optional[str] = None,
+        config_manager: Optional[DigestConfigManager] = None
+    ):
+        if config_manager:
+            self.config_manager = config_manager
+        else:
+            self.config_manager = DigestConfigManager(config_path or DIGEST_CONFIG_JSON)
+        self.config = self.config_manager.config
+
+    def _last_24_hours_range(self) -> Tuple[str, str, datetime, datetime, str]:
+        end_dt = datetime.now()
+        start_dt = end_dt - timedelta(hours=24)
+        date_from = start_dt.strftime("%Y-%m-%d")
+        date_to = (end_dt + timedelta(days=1)).strftime("%Y-%m-%d")
+        label = f"{start_dt:%Y-%m-%d %H:%M} ~ {end_dt:%Y-%m-%d %H:%M}"
+        return date_from, date_to, start_dt, end_dt, label
+
+    def _fetch_yesterday_emails(self) -> Dict[str, Any]:
+        from src.account_manager import AccountManager
+        from src.services.email_service import EmailService
+
+        date_from, date_to, start_dt, end_dt, date_label = self._last_24_hours_range()
+        email_cfg = self.config.get("email", {})
+        limit = int(email_cfg.get("limit", 500))
+        if limit <= 0:
+            limit = 1000
+
+        account_manager = AccountManager()
+        svc = EmailService(account_manager)
+        result = svc.search_emails(
+            query=None,
+            search_in="all",
+            date_from=date_from,
+            date_to=date_to,
+            folder=email_cfg.get("folder", "all"),
+            unread_only=email_cfg.get("unread_only", False),
+            has_attachments=None,
+            limit=limit,
+            account_id=email_cfg.get("account_id"),
+        )
+
+        if not result.get("success", False):
+            return {
+                "success": False,
+                "error": result.get("error", "Failed to fetch emails"),
+                "emails": [],
+                "date_from": date_from,
+                "date_to": date_to
+            }
+
+        emails = result.get("emails", [])
+        pre_filter_count = len(emails)
+        accounts_info = result.get("accounts_info") or []
+        failed_accounts = result.get("failed_accounts") or result.get("failed_searches") or []
+        accounts_searched = result.get("accounts_searched") or result.get("accounts_count")
+
+        total_found = result.get("total_found")
+        if total_found is None:
+            if accounts_info:
+                total_found = sum(info.get("total_found", 0) for info in accounts_info)
+            else:
+                total_found = result.get("total_emails")
+        if total_found is None:
+            total_found = len(emails)
+
+        truncated = total_found > pre_filter_count if total_found is not None else False
+
+        emails, filtered_out = self._filter_recent_emails(emails, start_dt, end_dt)
+        if not truncated:
+            if total_found is None:
+                total_found = len(emails)
+            else:
+                total_found = max(0, total_found - filtered_out)
+
+        use_account_totals = filtered_out == 0 and not truncated
+
+        account_lookup = {
+            acc.get("id"): acc.get("email")
+            for acc in account_manager.list_accounts()
+            if acc.get("id") and acc.get("email")
+        }
+        for email in emails:
+            if not email.get("account") and email.get("account_id"):
+                email["account"] = account_lookup.get(email["account_id"], email["account_id"])
+
+        detail_limit = int(self.config.get("summary_ai", {}).get("max_emails", 40))
+        if detail_limit > 0:
+            folder_default = email_cfg.get("folder", "INBOX")
+            if folder_default == "all":
+                folder_default = "INBOX"
+            self._hydrate_missing_emails(emails, svc, folder_default, detail_limit)
+
+        return {
+            "success": True,
+            "emails": emails,
+            "total_found": total_found,
+            "truncated": truncated,
+            "accounts_info": accounts_info,
+            "failed_accounts": failed_accounts,
+            "accounts_searched": accounts_searched,
+            "filtered_out": filtered_out,
+            "use_account_totals": use_account_totals,
+            "date_from": date_from,
+            "date_to": date_to,
+            "date_label": date_label
+        }
+
+    def _hydrate_missing_emails(
+        self,
+        emails: List[Dict[str, Any]],
+        email_service: Any,
+        folder_default: str,
+        limit: int
+    ) -> None:
+        updated = 0
+        for email in emails:
+            if updated >= limit:
+                break
+            if self._get_preview(email):
+                continue
+            email_id = email.get("id") or email.get("uid")
+            account_id = email.get("account_id")
+            if not email_id or not account_id:
+                continue
+            folder = email.get("folder") or folder_default
+            if folder == "all":
+                folder = "INBOX"
+            detail = email_service.get_email_detail(
+                email_id=str(email_id),
+                folder=folder,
+                account_id=account_id,
+                message_id=email.get("message_id")
+            )
+            if not detail.get("success"):
+                continue
+            self._merge_email_detail(email, detail)
+            updated += 1
+
+    def _merge_email_detail(self, email: Dict[str, Any], detail: Dict[str, Any]) -> None:
+        for key in ("subject", "from", "date", "account", "account_id", "folder", "message_id"):
+            if not email.get(key) and detail.get(key):
+                email[key] = detail.get(key)
+        if detail.get("html_body") and not email.get("html_body"):
+            email["html_body"] = detail.get("html_body")
+        if detail.get("has_html") is not None and "has_html" not in email:
+            email["has_html"] = detail.get("has_html")
+        body = detail.get("body") or detail.get("html_body")
+        if body and not email.get("body"):
+            email["body"] = body
+
+    def _resolve_categories(self) -> Dict[str, List[str]]:
+        cfg = self.config.get("classification", {})
+        categories = cfg.get("categories", {})
+        return categories if isinstance(categories, dict) else {}
+
+    def _classify_rule_based(self, emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        cfg = self.config.get("classification", {})
+        categories = self._resolve_categories()
+        important_categories = {c.lower() for c in cfg.get("important_categories", [])}
+        important_keywords = [k.lower() for k in cfg.get("important_keywords", [])]
+
+        results = []
+        for email in emails:
+            subject = email.get("subject", "")
+            sender = email.get("from", "")
+            preview = self._get_preview(email)
+            text = f"{subject} {sender} {preview}".lower()
+
+            category = "general"
+            for name, keywords in categories.items():
+                if any(keyword.lower() in text for keyword in keywords):
+                    category = name
+                    break
+
+            is_important = category.lower() in important_categories or any(
+                keyword in text for keyword in important_keywords
+            )
+
+            results.append({
+                "email_id": email.get("id", ""),
+                "category": category,
+                "is_important": is_important
+            })
+
+        return results
+
+    def _parse_json_response(self, content: str) -> Optional[List[Dict[str, Any]]]:
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError:
+            start = content.find("[")
+            end = content.rfind("]")
+            if start == -1 or end == -1 or end <= start:
+                return None
+            try:
+                parsed = json.loads(content[start:end + 1])
+            except json.JSONDecodeError:
+                return None
+        return parsed if isinstance(parsed, list) else None
+
+    def _classify_with_openai(self, emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        cfg = self.config.get("classification", {})
+        ai_cfg = cfg.get("ai", {})
+        api_key = ai_cfg.get("api_key") or os.getenv(ai_cfg.get("api_key_env", "OPENAI_API_KEY"))
+        if not api_key:
+            raise ValueError("OpenAI API key not found for classification")
+
+        try:
+            import openai
+        except ImportError as exc:
+            raise ImportError("OpenAI library not installed for classification") from exc
+
+        categories = self._resolve_categories()
+        category_names = list(categories.keys()) or ["general"]
+        important_categories = cfg.get("important_categories", [])
+        important_keywords = cfg.get("important_keywords", [])
+
+        max_emails = int(ai_cfg.get("max_emails", 80))
+        if max_emails <= 0:
+            max_emails = len(emails)
+        target_emails = emails[:max_emails]
+
+        max_body_length = int(ai_cfg.get("max_body_length", 200))
+        payload = []
+        for email in target_emails:
+            preview = self._get_preview(email, max_len=max_body_length)
+            payload.append({
+                "email_id": email.get("id", ""),
+                "subject": email.get("subject", ""),
+                "sender": email.get("from", ""),
+                "date": email.get("date", ""),
+                "preview": preview
+            })
+
+        prompt = (
+            "You are an email triage assistant. "
+            "Classify each email into one category from the list. "
+            "Mark is_important when the category is in the important list or "
+            "the email content suggests urgency.\n\n"
+            f"Categories: {', '.join(category_names)}\n"
+            f"Important categories: {', '.join(important_categories)}\n"
+            f"Important keywords: {', '.join(important_keywords)}\n\n"
+            "Return a JSON array only. Each item:\n"
+            "{"
+            "\"email_id\": \"...\", "
+            "\"category\": \"one of categories or general\", "
+            "\"is_important\": true/false"
+            "}\n\n"
+            f"Emails: {json.dumps(payload, ensure_ascii=False)}"
+        )
+
+        client = openai.OpenAI(api_key=api_key, base_url=ai_cfg.get("base_url"))
+        response = client.chat.completions.create(
+            model=ai_cfg.get("model", "gpt-3.5-turbo"),
+            messages=[
+                {"role": "system", "content": "Return strict JSON only."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.1,
+            max_tokens=600
+        )
+
+        content = response.choices[0].message.content.strip()
+        parsed = self._parse_json_response(content)
+        if parsed is None:
+            raise ValueError("AI classification response is not valid JSON")
+
+        rule_based_map = {
+            item["email_id"]: item for item in self._classify_rule_based(target_emails)
+        }
+        ai_map = {
+            item.get("email_id"): item for item in parsed if isinstance(item, dict)
+        }
+
+        output: List[Dict[str, Any]] = []
+        for email in target_emails:
+            email_id = email.get("id", "")
+            fallback = rule_based_map.get(
+                email_id,
+                {"email_id": email_id, "category": "general", "is_important": False}
+            )
+            item = ai_map.get(email_id)
+            if not isinstance(item, dict):
+                output.append(fallback)
+                continue
+            category = item.get("category") or fallback.get("category", "general")
+            is_important = item.get("is_important")
+            if not isinstance(is_important, bool):
+                is_important = fallback.get("is_important", False)
+            output.append({
+                "email_id": email_id,
+                "category": category,
+                "is_important": is_important
+            })
+
+        if max_emails < len(emails):
+            output.extend(self._classify_rule_based(emails[max_emails:]))
+
+        return output
+
+    def _classify_emails(self, emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        cfg = self.config.get("classification", {})
+        if not cfg.get("enabled", True):
+            return [
+                {"email_id": email.get("id", ""), "category": "general", "is_important": False}
+                for email in emails
+            ]
+
+        mode = cfg.get("mode", "ai")
+        if mode == "ai":
+            try:
+                return self._classify_with_openai(emails)
+            except Exception as exc:
+                logger.warning("AI classification failed, fallback to rule-based: %s", exc)
+                return self._classify_rule_based(emails)
+        return self._classify_rule_based(emails)
+
+    def _summarize_with_openai(
+        self,
+        emails: List[Dict[str, Any]],
+        category_counts: Dict[str, int],
+        date_label: str,
+        total_found: int,
+        displayed: int,
+        missing_details: int
+    ) -> Optional[str]:
+        cfg = self.config.get("summary_ai", {})
+        if not cfg.get("enabled", True):
+            return None
+
+        api_key = cfg.get("api_key") or os.getenv(cfg.get("api_key_env", "OPENAI_API_KEY"))
+        if not api_key:
+            logger.warning("OpenAI API key not found; skipping AI summary")
+            return None
+
+        try:
+            import openai
+        except ImportError:
+            logger.warning("OpenAI library not installed; skipping AI summary")
+            return None
+
+        client = openai.OpenAI(
+            api_key=api_key,
+            base_url=cfg.get("base_url")
+        )
+
+        max_emails = int(cfg.get("max_emails", 40))
+        if max_emails <= 0:
+            max_emails = min(40, len(emails))
+        sampled = emails[:max_emails]
+
+        category_summary = ", ".join(f"{name}: {count}" for name, count in category_counts.items())
+        email_lines = []
+        for email in sampled:
+            subject = email.get("subject", "")
+            sender = email.get("from", "")
+            date_str = email.get("date", "")
+            account = email.get("account") or email.get("account_id") or ""
+            preview = self._get_preview(email, max_len=120)
+            if not (subject or sender or date_str or preview):
+                continue
+            email_lines.append(f"- {subject} | {sender} | {account} | {date_str} | {preview}")
+
+        language = cfg.get("language", "en")
+        response_lang = "Chinese" if language == "zh" else "English"
+
+        prompt = (
+            "Summarize yesterday's emails for a daily digest.\n\n"
+            f"Date: {date_label}\n"
+            f"Total emails: {total_found} (shown {displayed})\n"
+            f"Missing details: {missing_details}\n"
+            f"Categories: {category_summary}\n\n"
+            "Emails:\n"
+            + "\n".join(email_lines)
+            + "\n\n"
+            f"Respond in {response_lang} using Markdown. Provide 3-5 bullet points and a short action list if needed."
+        )
+
+        response = client.chat.completions.create(
+            model=cfg.get("model", "gpt-3.5-turbo"),
+            messages=[
+                {"role": "system", "content": "You are a concise email digest assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2,
+            max_tokens=400
+        )
+        return response.choices[0].message.content.strip()
+
+    def _build_fallback_summary(
+        self,
+        total_found: int,
+        displayed: int,
+        category_counts: Dict[str, int],
+        missing_details: int
+    ) -> str:
+        category_summary = ", ".join(f"{name}: {count}" for name, count in category_counts.items())
+        lines = [
+            f"Total emails: {total_found} (shown {displayed})",
+            f"Categories: {category_summary}"
+        ]
+        if missing_details:
+            lines.append(f"Missing details: {missing_details}")
+        return "\n".join(lines)
+
+    def _aggregate_categories(self, classifications: List[Dict[str, Any]]) -> Dict[str, int]:
+        counts: Dict[str, int] = {}
+        for item in classifications:
+            category = item.get("category", "general") or "general"
+            counts[category] = counts.get(category, 0) + 1
+        return dict(sorted(counts.items(), key=lambda kv: kv[0]))
+
+    def _parse_email_timestamp(self, email: Dict[str, Any]) -> Optional[float]:
+        timestamp = email.get("timestamp")
+        if isinstance(timestamp, (int, float)) and timestamp > 0:
+            return float(timestamp)
+
+        date_str = (email.get("date") or "").strip()
+        if not date_str:
+            return None
+
+        try:
+            parsed = email_utils.parsedate_to_datetime(date_str)
+            if parsed:
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                return parsed.timestamp()
+        except Exception:
+            pass
+
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+            try:
+                parsed = datetime.strptime(date_str, fmt).replace(tzinfo=timezone.utc)
+                return parsed.timestamp()
+            except Exception:
+                continue
+
+        return None
+
+    def _filter_recent_emails(
+        self,
+        emails: List[Dict[str, Any]],
+        start_dt: datetime,
+        end_dt: datetime
+    ) -> Tuple[List[Dict[str, Any]], int]:
+        start_ts = start_dt.timestamp()
+        end_ts = end_dt.timestamp()
+        filtered: List[Dict[str, Any]] = []
+        for email in emails:
+            ts = self._parse_email_timestamp(email)
+            if ts is None or start_ts <= ts <= end_ts:
+                filtered.append(email)
+        return filtered, len(emails) - len(filtered)
+
+    def _select_highlights(
+        self,
+        emails: List[Dict[str, Any]],
+        classifications: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        classification_map = {
+            item.get("email_id"): item for item in classifications
+        }
+
+        important = []
+        for email in emails:
+            item = classification_map.get(email.get("id"))
+            if item and item.get("is_important"):
+                important.append(email)
+
+        return important if important else emails
+
+    def _strip_markdown(self, text: str) -> str:
+        return text.replace("**", "").replace("`", "")
+
+    def _strip_html(self, text: str) -> str:
+        if not text:
+            return ""
+        cleaned = re.sub(r"(?is)<(script|style).*?>.*?(</\\1>)", " ", text)
+        cleaned = re.sub(r"(?s)<[^>]+>", " ", cleaned)
+        cleaned = html.unescape(cleaned)
+        return re.sub(r"\s+", " ", cleaned).strip()
+
+    def _truncate_text(self, text: str, max_len: int) -> str:
+        if len(text) <= max_len:
+            return text
+        return text[: max_len - 3] + "..."
+
+    def _build_account_stats(
+        self,
+        emails: List[Dict[str, Any]],
+        accounts_info: List[Dict[str, Any]],
+        use_totals: bool = True
+    ) -> List[Dict[str, Any]]:
+        displayed_counts: Dict[str, int] = {}
+        for email in emails:
+            account = email.get("account") or email.get("account_id") or "unknown"
+            displayed_counts[account] = displayed_counts.get(account, 0) + 1
+
+        total_counts: Dict[str, int] = {}
+        if use_totals:
+            for info in accounts_info:
+                account = info.get("account") or info.get("account_id")
+                if not account:
+                    continue
+                total_found = info.get("total_found")
+                if total_found is None:
+                    total_found = info.get("fetched")
+                if total_found is not None:
+                    total_counts[account] = total_found
+
+        stats: List[Dict[str, Any]] = []
+        for account in sorted(set(displayed_counts) | set(total_counts)):
+            stats.append({
+                "account": account,
+                "displayed": displayed_counts.get(account, 0),
+                "total_found": total_counts.get(account)
+            })
+        return stats
+
+    def _is_empty_email(self, email: Dict[str, Any]) -> bool:
+        subject = (email.get("subject") or "").strip()
+        sender = (email.get("from") or "").strip()
+        date_str = (email.get("date") or "").strip()
+        preview = self._get_preview(email)
+        return not (subject or sender or date_str or preview)
+
+    def _get_preview(self, email: Dict[str, Any], max_len: Optional[int] = None) -> str:
+        preview = (
+            email.get("body_preview")
+            or email.get("preview")
+            or email.get("body")
+            or ""
+        )
+        if email.get("html_body") and not email.get("body"):
+            preview = email.get("html_body") or preview
+        if email.get("has_html") or email.get("html_body"):
+            preview = self._strip_html(preview)
+        preview = preview.replace("\n", " ").strip()
+        if max_len and len(preview) > max_len:
+            return preview[: max_len - 3] + "..."
+        return preview
+
+    def _build_markdown(
+        self,
+        date_label: str,
+        displayed: int,
+        total_found: int,
+        important_count: int,
+        summary_text: str,
+        category_counts: Dict[str, int],
+        highlights: List[Dict[str, Any]],
+        account_stats: List[Dict[str, Any]],
+        failed_accounts: List[Dict[str, Any]],
+        truncated: bool,
+        missing_details: int
+    ) -> str:
+        title = self.config.get("lark", {}).get("title", "Daily Email Digest")
+        lines = [
+            f"**{title}**",
+            f"Date: {date_label}",
+            f"Total: {total_found} (shown {displayed}) | Important: {important_count}",
+            ""
+        ]
+
+        if summary_text:
+            lines.append(summary_text)
+            lines.append("")
+
+        if account_stats:
+            lines.append("**Accounts**")
+            for item in account_stats:
+                account = item.get("account", "unknown")
+                total = item.get("total_found")
+                displayed_count = item.get("displayed", 0)
+                if total is None:
+                    lines.append(f"- {account}: {displayed_count}")
+                else:
+                    lines.append(f"- {account}: {displayed_count}/{total}")
+            lines.append("")
+
+        lines.append("**Categories**")
+        if category_counts:
+            for name, count in category_counts.items():
+                lines.append(f"- {name}: {count}")
+        else:
+            lines.append("- general: 0")
+
+        if highlights:
+            lines.append("")
+            lines.append("**Highlights**")
+            for email in highlights:
+                subject = email.get("subject", "")
+                sender = email.get("from", "")
+                date_str = email.get("date", "")
+                account = email.get("account") or email.get("account_id") or "unknown"
+                lines.append(f"- {subject} | {sender} | {account} | {date_str}")
+
+        if truncated or failed_accounts or missing_details:
+            lines.append("")
+            lines.append("**Notes**")
+            if truncated:
+                lines.append("- Digest shows only a subset (limit applied).")
+            if failed_accounts:
+                failed_names = ", ".join(
+                    item.get("account", "unknown") for item in failed_accounts
+                )
+                lines.append(f"- Failed accounts: {failed_names}")
+            if missing_details:
+                lines.append(f"- Missing details: {missing_details}")
+
+        return "\n".join(lines).strip()
+
+    def _build_telegram_text(
+        self,
+        date_label: str,
+        displayed: int,
+        total_found: int,
+        important_count: int,
+        summary_text: str,
+        category_counts: Dict[str, int],
+        highlights: List[Dict[str, Any]],
+        account_stats: List[Dict[str, Any]],
+        failed_accounts: List[Dict[str, Any]],
+        truncated: bool,
+        missing_details: int
+    ) -> str:
+        title = self.config.get("telegram", {}).get(
+            "title",
+            self.config.get("lark", {}).get("title", "Daily Email Digest")
+        )
+        summary_text = self._strip_markdown(summary_text) if summary_text else ""
+
+        lines = [
+            title,
+            f"Date: {date_label}",
+            f"Total: {total_found} (shown {displayed}) | Important: {important_count}",
+            ""
+        ]
+
+        if summary_text:
+            lines.append(summary_text)
+            lines.append("")
+
+        if account_stats:
+            lines.append("Accounts:")
+            for item in account_stats:
+                account = item.get("account", "unknown")
+                total = item.get("total_found")
+                displayed_count = item.get("displayed", 0)
+                if total is None:
+                    lines.append(f"- {account}: {displayed_count}")
+                else:
+                    lines.append(f"- {account}: {displayed_count}/{total}")
+            lines.append("")
+
+        lines.append("Categories:")
+        if category_counts:
+            for name, count in category_counts.items():
+                lines.append(f"- {name}: {count}")
+        else:
+            lines.append("- general: 0")
+
+        if highlights:
+            lines.append("")
+            lines.append("Highlights:")
+            for email in highlights:
+                subject = email.get("subject", "")
+                sender = email.get("from", "")
+                date_str = email.get("date", "")
+                account = email.get("account") or email.get("account_id") or "unknown"
+                lines.append(f"- {subject} | {sender} | {account} | {date_str}")
+
+        if truncated or failed_accounts or missing_details:
+            lines.append("")
+            lines.append("Notes:")
+            if truncated:
+                lines.append("- Digest shows only a subset (limit applied).")
+            if failed_accounts:
+                failed_names = ", ".join(
+                    item.get("account", "unknown") for item in failed_accounts
+                )
+                lines.append(f"- Failed accounts: {failed_names}")
+            if missing_details:
+                lines.append(f"- Missing details: {missing_details}")
+
+        return self._truncate_text("\n".join(lines).strip(), 4000)
+
+    def _build_lark_elements(
+        self,
+        date_label: str,
+        displayed: int,
+        total_found: int,
+        important_count: int,
+        summary_text: str,
+        category_counts: Dict[str, int],
+        highlights: List[Dict[str, Any]],
+        account_stats: List[Dict[str, Any]],
+        failed_accounts: List[Dict[str, Any]],
+        truncated: bool,
+        missing_details: int
+    ) -> List[Dict[str, Any]]:
+        elements: List[Dict[str, Any]] = []
+
+        elements.append({
+            "tag": "div",
+            "fields": [
+                {
+                    "is_short": True,
+                    "text": {"tag": "lark_md", "content": f"**Date**\n{date_label}"}
+                },
+                {
+                    "is_short": True,
+                    "text": {
+                        "tag": "lark_md",
+                        "content": f"**Total**\n{total_found} (shown {displayed})"
+                    }
+                },
+                {
+                    "is_short": True,
+                    "text": {
+                        "tag": "lark_md",
+                        "content": f"**Important**\n{important_count}"
+                    }
+                }
+            ]
+        })
+
+        if account_stats:
+            account_lines = []
+            for item in account_stats:
+                account = item.get("account", "unknown")
+                total = item.get("total_found")
+                displayed_count = item.get("displayed", 0)
+                if total is None:
+                    account_lines.append(f"- {account}: {displayed_count}")
+                else:
+                    account_lines.append(f"- {account}: {displayed_count}/{total}")
+            elements.append({
+                "tag": "markdown",
+                "content": "**Accounts**\n" + "\n".join(account_lines)
+            })
+
+        if summary_text:
+            elements.append({"tag": "markdown", "content": "**Summary**\n" + summary_text})
+
+        if category_counts:
+            category_lines = [f"- {name}: {count}" for name, count in category_counts.items()]
+        else:
+            category_lines = ["- general: 0"]
+        elements.append({"tag": "markdown", "content": "**Categories**\n" + "\n".join(category_lines)})
+
+        if highlights:
+            highlight_lines = []
+            for email in highlights:
+                subject = email.get("subject", "")
+                sender = email.get("from", "")
+                date_str = email.get("date", "")
+                account = email.get("account") or email.get("account_id") or "unknown"
+                highlight_lines.append(f"- {subject} | {sender} | {account} | {date_str}")
+            elements.append({"tag": "markdown", "content": "**Highlights**\n" + "\n".join(highlight_lines)})
+
+        if truncated or failed_accounts or missing_details:
+            notes = []
+            if truncated:
+                notes.append("- Digest shows only a subset (limit applied).")
+            if failed_accounts:
+                failed_names = ", ".join(
+                    item.get("account", "unknown") for item in failed_accounts
+                )
+                notes.append(f"- Failed accounts: {failed_names}")
+            if missing_details:
+                notes.append(f"- Missing details: {missing_details}")
+            elements.append({"tag": "markdown", "content": "**Notes**\n" + "\n".join(notes)})
+
+        return elements
+
+    def _build_lark_card_v2(self, elements: List[Dict[str, Any]]) -> Dict[str, Any]:
+        title = self.config.get("lark", {}).get("title", "Daily Email Digest")
+        return {
+            "msg_type": "interactive",
+            "card": {
+                "config": {"wide_screen_mode": True},
+                "header": {
+                    "title": {
+                        "tag": "plain_text",
+                        "content": title
+                    }
+                },
+                "elements": elements
+            }
+        }
+
+    def _send_lark_notification(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        lark_cfg = self.config.get("lark", {})
+        webhook_url = lark_cfg.get("webhook_url")
+        if not webhook_url:
+            return {"success": False, "error": "Missing Lark webhook_url"}
+
+        secret = lark_cfg.get("secret")
+        if secret:
+            timestamp = str(int(time.time()))
+            string_to_sign = f"{timestamp}\n{secret}"
+            sign = hashlib.sha256(string_to_sign.encode("utf-8")).hexdigest()
+            payload["timestamp"] = timestamp
+            payload["sign"] = sign
+
+        try:
+            response = requests.post(
+                webhook_url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=10
+            )
+            response.raise_for_status()
+            return {"success": True, "status_code": response.status_code, "response": response.text}
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
+
+    def _send_telegram_notification(self, text: str) -> Dict[str, Any]:
+        telegram_cfg = self.config.get("telegram", {})
+        bot_token = telegram_cfg.get("bot_token")
+        chat_id = telegram_cfg.get("chat_id")
+        if not bot_token or not chat_id:
+            return {"success": False, "error": "Missing Telegram bot_token or chat_id"}
+
+        api_base = telegram_cfg.get("api_base", "https://api.telegram.org").rstrip("/")
+        payload = {
+            "chat_id": chat_id,
+            "text": text,
+            "disable_web_page_preview": True
+        }
+        parse_mode = telegram_cfg.get("parse_mode")
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
+
+        try:
+            response = requests.post(
+                f"{api_base}/bot{bot_token}/sendMessage",
+                json=payload,
+                timeout=10
+            )
+            response.raise_for_status()
+            return {"success": True, "status_code": response.status_code, "response": response.text}
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
+
+    def run(self) -> Dict[str, Any]:
+        fetch_result = self._fetch_yesterday_emails()
+        if not fetch_result.get("success"):
+            return fetch_result
+
+        emails = fetch_result.get("emails", [])
+        date_label = fetch_result.get("date_label") or fetch_result.get("date_from")
+        total_found = int(fetch_result.get("total_found", len(emails)))
+        missing_details = sum(1 for email in emails if self._is_empty_email(email))
+        emails = [email for email in emails if not self._is_empty_email(email)]
+        displayed = len(emails)
+        truncated = bool(fetch_result.get("truncated", total_found > displayed))
+        accounts_info = fetch_result.get("accounts_info", [])
+        failed_accounts = fetch_result.get("failed_accounts", [])
+        use_account_totals = bool(fetch_result.get("use_account_totals", True))
+
+        classifications = self._classify_emails(emails)
+        category_counts = self._aggregate_categories(classifications)
+        important_count = sum(1 for item in classifications if item.get("is_important"))
+
+        summary_text = self._summarize_with_openai(
+            emails,
+            category_counts,
+            date_label,
+            total_found,
+            displayed,
+            missing_details
+        )
+        if summary_text is None:
+            summary_text = self._build_fallback_summary(
+                total_found,
+                displayed,
+                category_counts,
+                missing_details
+            )
+
+        highlight_candidates = self._select_highlights(emails, classifications)
+        account_stats = self._build_account_stats(emails, accounts_info, use_account_totals)
+
+        lark_cfg = self.config.get("lark", {})
+        lark_max = int(lark_cfg.get("max_highlights", 10))
+        lark_highlights = highlight_candidates[:lark_max] if lark_max > 0 else []
+
+        lark_elements = self._build_lark_elements(
+            date_label=date_label,
+            displayed=displayed,
+            total_found=total_found,
+            important_count=important_count,
+            summary_text=summary_text,
+            category_counts=category_counts,
+            highlights=lark_highlights,
+            account_stats=account_stats,
+            failed_accounts=failed_accounts,
+            truncated=truncated,
+            missing_details=missing_details
+        )
+        payload = self._build_lark_card_v2(lark_elements)
+
+        telegram_cfg = self.config.get("telegram", {})
+        telegram_max = int(telegram_cfg.get("max_highlights", 10))
+        telegram_highlights = highlight_candidates[:telegram_max] if telegram_max > 0 else []
+        telegram_text = self._build_telegram_text(
+            date_label=date_label,
+            displayed=displayed,
+            total_found=total_found,
+            important_count=important_count,
+            summary_text=summary_text,
+            category_counts=category_counts,
+            highlights=telegram_highlights,
+            account_stats=account_stats,
+            failed_accounts=failed_accounts,
+            truncated=truncated,
+            missing_details=missing_details
+        )
+
+        lark_result = None
+        if lark_cfg.get("enabled", True):
+            lark_result = self._send_lark_notification(payload)
+
+        telegram_result = None
+        if telegram_cfg.get("enabled", False):
+            telegram_result = self._send_telegram_notification(telegram_text)
+
+        return {
+            "success": True,
+            "date": date_label,
+            "total_emails": len(emails),
+            "displayed": displayed,
+            "total_found": total_found,
+            "important_emails": important_count,
+            "categories": category_counts,
+            "truncated": truncated,
+            "summary": summary_text,
+            "missing_details": missing_details,
+            "lark_payload": payload,
+            "telegram_message": telegram_text,
+            "notification": lark_result,
+            "notifications": {
+                "lark": lark_result,
+                "telegram": telegram_result
+            }
+        }

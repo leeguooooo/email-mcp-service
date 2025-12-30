@@ -6,38 +6,30 @@
 [![Tests](https://img.shields.io/badge/tests-71%2F72%20passing-brightgreen)](./tests)
 [![GitHub Sponsors](https://img.shields.io/github/sponsors/leeguooooo?logo=github)](https://github.com/sponsors/leeguooooo)
 
-A unified MCP email service supporting multi-account management with **AI-powered intelligent monitoring and notifications**.
+A unified MCP email service supporting multi-account management with monitoring, notifications, and optional AI translation/summaries.
 
-> **New Feature**: Email translation & summarization with n8n automation - automatically translate non-Chinese emails, generate summaries, and send to Feishu/Lark!
+> **New Feature**: Daily email digest with AI classification + Lark/Telegram notifications, scheduled locally.
 
-## New Feature: n8n + AI Email Monitoring
+## Local Scheduled Monitoring & Digest
 
-**Automatically monitor emails, filter important ones with AI, and send real-time notifications to your team chat!**
+**Run monitoring and digest jobs locally with a simple scheduler or cron.**
 
-- **AI Smart Filtering**: Uses OpenAI/Claude to intelligently identify important emails
-- **Multi-platform Notifications**: Supports Feishu/DingTalk/WeChat Work/Slack
-- **Automated Monitoring**: n8n workflow runs every 5 minutes automatically  
+- **Multi-platform Notifications**: Supports Lark/Feishu, Telegram, custom webhooks
+- **Local Scheduling**: Run via `schedule` daemon or cron
 - **Deduplication**: Prevents duplicate notifications
-- **Production Ready**: Comprehensive error handling and fallback mechanisms
 
-### Quick Start with AI Monitoring
+### Quick Start (Local)
 
 ```bash
-# 1. Set up the monitoring system
-python scripts/setup_n8n_monitoring.py
+# 1. Copy digest config
+cp config_templates/daily_digest_config.example.json data/daily_digest_config.json
 
-# 2. Configure environment variables
-export FEISHU_WEBHOOK="your_webhook_url"
-export OPENAI_API_KEY="your_api_key"  # Optional for AI filtering
+# 2. Run once
+uv run python scripts/daily_email_digest.py run
 
-# 3. Import n8n workflow
-# Import n8n/email_monitoring_workflow.json in your n8n instance
-
-# 4. Start monitoring!
-# The system will automatically check emails every 5 minutes
+# 3. Start local scheduler
+uv run python scripts/daily_email_digest.py daemon
 ```
-
-**Documentation**: See [N8N_EMAIL_MONITORING_GUIDE.md](docs/guides/N8N_EMAIL_MONITORING_GUIDE.md) for complete setup guide.
 
 ## Supported Email Providers
 
@@ -192,26 +184,19 @@ get_contact_timeline with contact_email="user@example.com"  # Get communication 
 - `analyze_contacts` ⭐ - Analyze contact frequency
 - `get_contact_timeline` ⭐ - Get communication timeline
 
-### AI Monitoring System
+### Monitoring System
 
-The AI monitoring system includes several powerful scripts:
+The monitoring system includes several powerful scripts:
 
 #### Core Scripts
-- `scripts/call_email_tool.py` - Bridge between n8n and MCP tools
-- `scripts/ai_email_filter.py` - AI-powered email importance filtering
 - `scripts/notification_service.py` - Multi-platform notification service
 - `scripts/email_monitor.py` - Main monitoring controller
-- `scripts/setup_n8n_monitoring.py` - Automated setup script
+- `scripts/daily_email_digest.py` - Daily digest scheduler (local)
+- `scripts/email_monitor_api.py` - Optional HTTP API wrapper
 
 #### Usage Examples
 
 ```bash
-# Test email fetching
-python scripts/call_email_tool.py list_unread_emails '{"limit":5}'
-
-# Test AI filtering
-python scripts/ai_email_filter.py '[{"id":"test","subject":"Urgent meeting","from":"boss@company.com","date":"2024-01-15","body_preview":"Important project discussion..."}]'
-
 # Test notifications
 python scripts/notification_service.py test
 
@@ -220,6 +205,9 @@ python scripts/email_monitor.py run
 
 # Check system status
 python scripts/email_monitor.py status
+
+# Run daily digest once
+python scripts/daily_email_digest.py run
 ```
 
 ## MCP Tool CLI
@@ -280,26 +268,28 @@ Each command accepts `--json` for machine-readable output. See [clients/mailbox_
 3. **Connection Timeout**: Check network and firewall settings
 4. **Duplicates or stale cache**: Cache uses unique key `(account_id, folder_id, uid)` with upsert; if DB is corrupted, remove `data/email_sync.db` and re-sync. Use `sync_emails status` to confirm scheduler (local time, 5-minute cadence supported).
 
-### AI Monitoring Issues
-5. **AI Filtering Failed**: System automatically falls back to keyword filtering if AI API fails
+### Automation Issues
+5. **AI Summary/Classification Failed**: Falls back to rule-based classification or skips summary
 6. **Webhook Not Working**: Verify webhook URL and test with `python scripts/test_lark_webhook.py`
-7. **n8n Workflow Errors**: Check environment variables (`FEISHU_WEBHOOK`, `OPENAI_API_KEY`)
-8. **Script Permission Denied**: Run `chmod +x scripts/*.py` to make scripts executable
-9. **No Notifications**: Check notification config and test with `python scripts/notification_service.py test`
+7. **Script Permission Denied**: Run `chmod +x scripts/*.py` to make scripts executable
+8. **No Notifications**: Check notification config and test with `python scripts/notification_service.py test`
 
 ### Quick Diagnostics
 ```bash
 # Check system status
 python scripts/email_monitor.py status
 
-# Test all components
-python scripts/setup_n8n_monitoring.py --test-only
+# Run a full monitoring cycle
+python scripts/email_monitor.py run
+
+# Run a daily digest once
+python scripts/daily_email_digest.py run
 
 # View logs
 tail -f email_monitor.log
 
 # Check environment variables
-env | grep -E "(FEISHU|OPENAI|PYTHONPATH)"
+env | grep -E "(FEISHU|OPENAI|TELEGRAM|API_SECRET)"
 ```
 
 ## Project Structure
@@ -323,7 +313,6 @@ mcp-email-service/
 │   ├── guides/               # User guides
 │   └── archive/              # Historical documents
 ├── scripts/                   # Utility scripts
-├── n8n/                      # n8n workflow templates
 ├── config_templates/         # Configuration examples
 ├── clients/                  # Standalone clients and tooling
 │   └── mailbox_client/       # Command-line mailbox browser
@@ -345,7 +334,6 @@ mcp-email-service/
 ### Quick Start Guides
 - **[docs/guides/EMAIL_TRANSLATE_WORKFLOW_GUIDE.md](docs/guides/EMAIL_TRANSLATE_WORKFLOW_GUIDE.md)** - Email translation & summarization workflow
 - **[docs/guides/HTTP_API_QUICK_START.md](docs/guides/HTTP_API_QUICK_START.md)** - HTTP API quick start
-- **[docs/guides/N8N_EMAIL_MONITORING_GUIDE.md](docs/guides/N8N_EMAIL_MONITORING_GUIDE.md)** - n8n email monitoring guide
 - **[docs/guides/LARK_SETUP_GUIDE.md](docs/guides/LARK_SETUP_GUIDE.md)** - Feishu/Lark webhook setup
 
 ### Deployment & Security
@@ -357,7 +345,6 @@ mcp-email-service/
 - **[docs/README.md](docs/README.md)** - Complete documentation index
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System architecture and design
 - **[docs/database_design.md](docs/database_design.md)** - Database schema and design
-- **[n8n/README.md](n8n/README.md)** - n8n workflow details
 - **[config_templates/](config_templates/)** - Configuration templates and examples
 - **[data/README.md](data/README.md)** - Data directory usage guide
 
@@ -399,7 +386,7 @@ uv sync --extra dev
 uv run pytest
 
 # Set up development environment
-cp config_templates/env.n8n.example .env
+cp config_templates/env.example .env
 # Edit .env with your configuration
 ```
 
@@ -443,10 +430,10 @@ uvx mypy src/
 ## Features Roadmap
 
 - [x] Multi-account email management
-- [x] AI-powered email filtering
+- [x] AI-assisted classification & summaries
 - [x] Email translation & summarization (OpenAI)
 - [x] Multi-platform notifications
-- [x] n8n workflow automation
+- [x] Local scheduled digest/monitoring
 - [x] Production-ready error handling
 - [ ] Email auto-reply with AI
 - [ ] Smart email categorization

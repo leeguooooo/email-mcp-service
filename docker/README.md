@@ -40,9 +40,10 @@ docker run -d \
 - `API_SECRET_KEY` - API 认证密钥
 
 可选的环境变量：
-- `ANTHROPIC_API_KEY` - Anthropic API 密钥
-- `EMAIL_API_URL` - 邮件 API 地址
+- `API_BASE_URL` - HTTP API 基础地址
 - `FEISHU_WEBHOOK` - 飞书 Webhook URL
+- `TELEGRAM_BOT_TOKEN` - Telegram Bot Token
+- `TELEGRAM_CHAT_ID` - Telegram Chat ID
 
 ## 🔧 配置文件
 
@@ -57,4 +58,3 @@ docker run -d \
 - [主文档](../README.md)
 - [部署指南](../docs/guides/PRODUCTION_DEPLOYMENT_GUIDE.md)
 - [安全配置](../docs/guides/SECURITY_SETUP_GUIDE.md)
-

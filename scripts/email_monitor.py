@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-邮件监控主控制脚本 - 整合邮件获取、AI过滤、通知发送
-这是一个完整的流程脚本，可以被 n8n 或其他自动化工具调用
+邮件监控主控制脚本 - 整合邮件获取与通知发送
+这是一个完整的流程脚本，可以被本地定时任务或其他自动化工具调用
 """
 import json
 import sys
@@ -10,11 +10,12 @@ import logging
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 import subprocess
-import tempfile
 
 # 添加项目根目录到 Python 路径
 repo_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(repo_root))
+
+from src.config.paths import EMAIL_MONITOR_CONFIG_JSON, NOTIFICATION_CONFIG_JSON
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -31,12 +32,18 @@ class EmailMonitor:
         Args:
             config_path: 配置文件路径
         """
-        self.config_path = config_path or "email_monitor_config.json"
+        self.config_path = config_path or EMAIL_MONITOR_CONFIG_JSON
         self.config = self._load_config()
         self.scripts_dir = Path(__file__).parent
     
     def _load_config(self) -> Dict[str, Any]:
         """加载配置文件"""
+        def _relative_config_path(path_value: str) -> str:
+            try:
+                return str(Path(path_value).relative_to(repo_root))
+            except ValueError:
+                return path_value
+
         default_config = {
             "email": {
                 "fetch_limit": 20,
@@ -44,14 +51,9 @@ class EmailMonitor:
                 "account_id": None,
                 "folder": "INBOX"
             },
-            "ai_filter": {
-                "enabled": True,
-                "config_path": "ai_filter_config.json",
-                "priority_threshold": 0.7
-            },
             "notification": {
                 "enabled": True,
-                "config_path": "notification_config.json",
+                "config_path": _relative_config_path(NOTIFICATION_CONFIG_JSON),
                 "webhook_names": None  # None 表示发送到所有启用的 webhook
             },
             "deduplication": {
@@ -65,6 +67,19 @@ class EmailMonitor:
             }
         }
         
+        if not os.path.exists(self.config_path):
+            legacy_path = repo_root / "email_monitor_config.json"
+            if legacy_path.exists():
+                try:
+                    Path(self.config_path).parent.mkdir(parents=True, exist_ok=True)
+                    Path(self.config_path).write_text(
+                        legacy_path.read_text(encoding="utf-8"),
+                        encoding="utf-8"
+                    )
+                    logger.info("Migrated legacy email_monitor_config.json to %s", self.config_path)
+                except Exception as e:
+                    logger.warning(f"Failed to migrate legacy config: {e}")
+
         if os.path.exists(self.config_path):
             try:
                 with open(self.config_path, 'r', encoding='utf-8') as f:
@@ -152,9 +167,17 @@ class EmailMonitor:
         if email_config.get("account_id"):
             args["account_id"] = email_config["account_id"]
         
-        # 调用邮件获取脚本
-        tool_name = "list_unread_emails" if args["unread_only"] else "list_emails"
-        result = self._run_script("call_email_tool.py", [tool_name, json.dumps(args)])
+        from src.account_manager import AccountManager
+        from src.services.email_service import EmailService
+
+        svc = EmailService(AccountManager())
+        result = svc.list_emails(
+            limit=args["limit"],
+            unread_only=args["unread_only"],
+            folder=args["folder"],
+            account_id=args.get("account_id"),
+            use_cache=False
+        )
         
         if not result.get("success", False):
             logger.error(f"Failed to fetch emails: {result.get('error')}")
@@ -169,81 +192,23 @@ class EmailMonitor:
             "count": len(emails)
         }
     
-    def filter_emails_with_ai(self, emails: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """使用 AI 过滤邮件"""
-        if not self.config.get("ai_filter", {}).get("enabled", True):
-            logger.info("AI filtering is disabled")
-            return {
-                "success": True,
-                "results": [
-                    {
-                        "email_id": email.get("id", ""),
-                        "is_important": True,  # 不过滤时认为都重要
-                        "priority_score": 0.8,
-                        "reason": "AI过滤已禁用",
-                        "category": "general",
-                        "suggested_action": "none"
-                    }
-                    for email in emails
-                ]
-            }
-        
-        if not emails:
-            return {"success": True, "results": []}
-        
-        # 准备 AI 过滤参数
-        ai_config = self.config.get("ai_filter", {})
-        args = [json.dumps(emails)]
-        
-        if ai_config.get("config_path"):
-            args.append(ai_config["config_path"])
-        
-        # 调用 AI 过滤脚本
-        result = self._run_script("ai_email_filter.py", args)
-        
-        if not result.get("success", False):
-            logger.error(f"AI filtering failed: {result.get('error')}")
-            # 回退到简单过滤
-            return self._simple_filter_fallback(emails)
-        
-        filter_results = result.get("results", [])
-        important_count = sum(1 for r in filter_results if r.get("is_important", False))
-        
-        logger.info(f"AI filtered {len(emails)} emails, {important_count} marked as important")
-        
-        return result
-    
-    def _simple_filter_fallback(self, emails: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """AI 过滤失败时的简单回退方案"""
-        logger.info("Using simple keyword-based filtering as fallback")
-        
-        important_keywords = ["urgent", "important", "meeting", "deadline", "紧急", "重要", "会议", "截止"]
-        results = []
-        
-        for email in emails:
-            text_to_check = f"{email.get('subject', '')} {email.get('body_preview', '')}".lower()
-            
-            # 简单的关键词匹配
-            importance_score = sum(1 for keyword in important_keywords if keyword in text_to_check)
-            priority_score = min(0.9, max(0.3, 0.5 + importance_score * 0.1))
-            is_important = priority_score >= 0.7
-            
-            results.append({
-                "email_id": email.get("id", ""),
-                "is_important": is_important,
-                "priority_score": priority_score,
-                "reason": "简单关键词分析（AI过滤失败回退）",
-                "category": "general",
-                "suggested_action": "none"
-            })
-        
-        important_count = sum(1 for r in results if r["is_important"])
-        
+    def build_notification_results(self, emails: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """构建默认通知结果（不过滤）"""
         return {
             "success": True,
             "total_emails": len(emails),
-            "important_emails": important_count,
-            "results": results
+            "important_emails": len(emails),
+            "results": [
+                {
+                    "email_id": email.get("id", ""),
+                    "is_important": True,
+                    "priority_score": 0.8,
+                    "reason": "未启用过滤，全部通知",
+                    "category": "general",
+                    "suggested_action": "none"
+                }
+                for email in emails
+            ]
         }
     
     def send_notifications(self, emails: List[Dict[str, Any]], 
@@ -335,19 +300,8 @@ class EmailMonitor:
                     },
                 }
             
-            # 2. AI 过滤
-            filter_result = self.filter_emails_with_ai(emails)
-            if not filter_result.get("success", False):
-                return {
-                    "success": False,
-                    "error": "Failed to filter emails",
-                    "important_emails": [],
-                    "details": {
-                        "emails": emails,
-                        "fetch_result": fetch_result,
-                        "filter_result": filter_result,
-                    },
-                }
+            # 2. 生成通知结果（不过滤）
+            filter_result = self.build_notification_results(emails)
             
             filter_results = filter_result.get("results", [])
             important_count = sum(1 for r in filter_results if r.get("is_important", False))
@@ -402,15 +356,12 @@ class EmailMonitor:
                 "last_run": None,
                 "configuration": {
                     "email_config": self.config.get("email", {}),
-                    "ai_filter_enabled": self.config.get("ai_filter", {}).get("enabled", False),
                     "notification_enabled": self.config.get("notification", {}).get("enabled", False)
                 }
             }
             
             # 检查脚本文件
             required_scripts = [
-                "call_email_tool.py",
-                "ai_email_filter.py", 
                 "notification_service.py"
             ]
             
@@ -444,7 +395,7 @@ def main():
             "examples": {
                 "run": "python email_monitor.py run",
                 "status": "python email_monitor.py status",
-                "test": "python email_monitor.py test fetch|filter|notify"
+                "test": "python email_monitor.py test fetch|notify"
             }
         }))
         sys.exit(1)
@@ -481,14 +432,8 @@ def main():
                 print(json.dumps(result, indent=2, ensure_ascii=False))
             
             if component in ["filter", "all"] and len(sys.argv) > 2:
-                print("Testing AI filter...")
-                # 需要先获取邮件才能测试过滤
-                fetch_result = monitor.fetch_emails()
-                if fetch_result.get("success"):
-                    emails = fetch_result.get("emails", [])[:3]  # 只测试前3封
-                    filter_result = monitor.filter_emails_with_ai(emails)
-                    print(json.dumps(filter_result, indent=2, ensure_ascii=False))
-            
+                print("Filtering is no longer available; skipping.")
+
             if component in ["notify", "all"]:
                 print("Testing notification...")
                 # 发送测试通知

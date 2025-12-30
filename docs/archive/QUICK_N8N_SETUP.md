@@ -13,7 +13,6 @@
 
 交互式设置会引导你输入：
 - N8N_API_KEY (必需)
-- OPENAI_API_KEY (可选)
 
 #### 2. 测试连接
 ```bash
@@ -75,14 +74,6 @@ uv run python scripts/test_n8n_api.py
 | Python 路径 | 自动添加到 PYTHONPATH |
 
 ## 🔧 可选配置
-
-### 使用 OpenAI AI 过滤
-
-```bash
-export OPENAI_API_KEY="your_openai_api_key"
-```
-
-没有 OpenAI API Key 也能运行，系统会自动回退到关键词过滤。
 
 ### 自定义 n8n URL
 
@@ -155,7 +146,6 @@ $ ./setup_n8n.sh
    1. 请在 n8n 界面中检查工作流配置
    2. 确认环境变量设置正确:
       - FEISHU_WEBHOOK
-      - OPENAI_API_KEY (可选)
       - PYTHONPATH
    3. 测试工作流执行
 
@@ -170,8 +160,7 @@ $ ./setup_n8n.sh
 📝 下一步:
    1. 访问 https://n8n.ifoodme.com
    2. 检查工作流配置
-   3. 设置 OPENAI_API_KEY (可选)
-   4. 激活工作流
+   3. 激活工作流
 ```
 
 ## ❌ 常见问题

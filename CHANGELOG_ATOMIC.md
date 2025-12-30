@@ -84,7 +84,6 @@
 
 以下脚本现在明确定位为**示例实现**（非核心能力）：
 - `scripts/inbox_organizer.py` - 收件箱整理示例
-- `scripts/ai_email_filter.py` - AI 过滤示例
 - `scripts/email_translator.py` - 翻译示例
 - `scripts/email_monitor_api.py` - HTTP API 包装（可选部署）
 - `scripts/email_monitor.py` - 监控示例
@@ -170,4 +169,3 @@ for acc in activity['accounts']:
 **完整变更**: [查看 Git Diff](#)  
 **贡献者**: leo, AI Assistant  
 **发布日期**: 2025-10-22
-

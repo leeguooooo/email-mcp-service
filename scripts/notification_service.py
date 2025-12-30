@@ -16,6 +16,11 @@ import logging
 import requests
 from datetime import datetime, timedelta
 
+repo_root = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(repo_root))
+
+from src.config.paths import NOTIFICATION_CONFIG_JSON, NOTIFICATION_HISTORY_DB
+
 # 配置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -60,8 +65,8 @@ class NotificationService:
             config_path: 配置文件路径
             db_path: 去重数据库路径
         """
-        self.config_path = config_path or "notification_config.json"
-        self.db_path = db_path or "notification_history.db"
+        self.config_path = config_path or NOTIFICATION_CONFIG_JSON
+        self.db_path = db_path or NOTIFICATION_HISTORY_DB
         self.config = self._load_config()
         self._init_database()
     
@@ -168,6 +173,19 @@ class NotificationService:
             }
         }
         
+        if not os.path.exists(self.config_path):
+            legacy_path = repo_root / "notification_config.json"
+            if legacy_path.exists():
+                try:
+                    Path(self.config_path).parent.mkdir(parents=True, exist_ok=True)
+                    Path(self.config_path).write_text(
+                        legacy_path.read_text(encoding="utf-8"),
+                        encoding="utf-8"
+                    )
+                    logger.info("Migrated legacy notification_config.json to %s", self.config_path)
+                except Exception as e:
+                    logger.warning(f"Failed to migrate legacy config: {e}")
+
         if os.path.exists(self.config_path):
             try:
                 with open(self.config_path, 'r', encoding='utf-8') as f:

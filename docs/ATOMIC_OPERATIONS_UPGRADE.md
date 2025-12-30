@@ -187,7 +187,6 @@ if result["success"]:
 ### 示例说明
 - **`scripts/README.md`** - 示例脚本定位与使用
   - inbox_organizer - 收件箱整理示例
-  - ai_email_filter - AI 过滤示例
   - email_translator - 翻译示例
   - email_monitor_api - HTTP API 包装
 
@@ -225,7 +224,7 @@ mcp.call("delete_emails", {"email_ids": spam})
 @tool("smart_organize")
 def smart_organize():
     emails = list_emails()
-    spam = ai_filter(emails)  # ❌ AI 能力
+    spam = ai_model.classify_spam(emails)  # ❌ AI 能力
     summary = translate(emails)  # ❌ 翻译能力
     return {"spam": spam, "summary": summary}
 ```
@@ -488,4 +487,3 @@ A:
 **最后更新**: 2025-10-22  
 **版本**: 1.1.0  
 **工具数量**: 28 个（+3 新增，多个优化）
-

@@ -206,7 +206,7 @@ cat .gitignore | grep -E "(\.env|accounts\.json|\.db)"
 
 ### 推荐标签
 ```
-mcp, email, imap, smtp, n8n, automation, ai, translation, openai, 
+mcp, email, imap, smtp, automation, ai, translation, openai, 
 python, fastapi, multi-account, monitoring, notifications
 ```
 
@@ -234,7 +234,7 @@ uv sync
 uv run pytest
 
 # 4. 验证示例配置
-cp config_templates/env.n8n.example .env
+cp config_templates/env.example .env
 # 编辑 .env 并测试
 
 # 5. 清理
@@ -274,4 +274,3 @@ cd .. && rm -rf test-repo
 **最后更新**: 2025-10-16  
 **维护者**: MCP Email Service Team  
 **状态**: 生产就绪 🚀
-

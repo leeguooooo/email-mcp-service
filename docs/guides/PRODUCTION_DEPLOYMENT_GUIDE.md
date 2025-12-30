@@ -2,79 +2,19 @@
 
 基于 Leo 的 review 建议，这里是生产环境稳定运行的完整配置指南。
 
-## 🔧 Leo Review 要点修复
+## 🔧 生产环境注意事项
 
-### 1. Execute Command 节点配置
+### 1. 固定工作目录/路径
 
-**问题**: 缺少工作目录、超时、失败处理配置  
-**解决方案**: 在 n8n 工作流的 "邮件监控" 节点中添加完整的 options 配置
+在 cron/systemd 中使用绝对路径，确保脚本能找到配置文件与依赖。
 
-```json
-{
-  "parameters": {
-    "command": "python",
-    "arguments": "/Users/leo/github.com/mcp-email-service/scripts/email_monitor.py run",
-    "options": {
-      "cwd": "/Users/leo/github.com/mcp-email-service",
-      "timeout": 600000,
-      "output": "json", 
-      "continueOnFail": true
-    }
-  }
-}
-```
+### 2. Webhook 与密钥配置
 
-### 2. Webhook URL 去硬编码
+将 Webhook 与 API Key 放在 `.env` 或系统环境变量中，避免硬编码在脚本里。
 
-**问题**: Webhook URL 写死在工作流中，无法复用  
-**解决方案**: 使用环境变量
+### 3. 超时与错误处理
 
-```json
-{
-  "parameters": {
-    "url": "={{ $env.FEISHU_WEBHOOK }}",
-    "options": {
-      "allowUnauthorizedCerts": false
-    }
-  }
-}
-```
-
-### 3. 完善的错误处理
-
-**问题**: 只检查 `result.success`，忽略了 `exitCode` 和 `stderr`  
-**解决方案**: 在 "解析结果" 节点中先检查脚本执行状态
-
-```javascript
-// 解析邮件监控结果
-const input = $input.first().json;
-const exitCode = input.exitCode || 0;
-const stderr = input.stderr || '';
-const stdout = input.stdout || '';
-
-// 首先检查脚本执行状态
-if (exitCode !== 0) {
-  throw new Error(`脚本执行失败 (退出码: ${exitCode})\n错误信息: ${stderr}\n输出: ${stdout}`);
-}
-
-// 检查是否有输出
-if (!stdout || stdout.trim() === '') {
-  throw new Error('脚本没有返回任何输出');
-}
-
-// 解析 JSON 输出
-let result;
-try {
-  result = JSON.parse(stdout);
-} catch (parseError) {
-  throw new Error(`JSON 解析失败: ${parseError.message}\n原始输出: ${stdout}`);
-}
-
-// 检查业务逻辑是否成功
-if (!result.success) {
-  throw new Error(`邮件监控失败: ${result.error || '未知错误'}`);
-}
-```
+可在 systemd 中设置 `TimeoutSec`，或在 cron 中使用 `timeout` 包装脚本。
 
 ## 🛠️ 生产环境配置步骤
 
@@ -85,19 +25,21 @@ if (!result.success) {
 ```bash
 # 必需的环境变量
 export FEISHU_WEBHOOK="https://open.larksuite.com/open-apis/bot/v2/hook/a56c9638-cb65-4f95-bb11-9eb19e09692a"
-export OPENAI_API_KEY="your_openai_api_key"
-export PYTHONPATH="/Users/leo/github.com/mcp-email-service:$PYTHONPATH"
 
-# 可选的 n8n 配置
-export N8N_LOG_LEVEL="info"
-export N8N_BASIC_AUTH_ACTIVE="false"
+# 可选的 AI/HTTP API 配置
+export OPENAI_API_KEY="sk-xxx"
+export API_SECRET_KEY="your-secret"
 ```
 
-### 2. n8n 工作流导入
+### 2. 设置本地定时任务
 
-1. 导入更新后的工作流文件: `n8n/email_monitoring_workflow.json`
-2. 确认所有节点配置正确
-3. 测试工作流执行
+```bash
+# 每 5 分钟检查邮件
+*/5 * * * * cd /path/to/mcp-email-service && uv run python scripts/email_monitor.py run
+
+# 每天 08:30 发送汇总
+30 8 * * * cd /path/to/mcp-email-service && uv run python scripts/daily_email_digest.py run
+```
 
 ### 3. 脚本权限和路径
 
@@ -120,17 +62,15 @@ python scripts/email_monitor.py status
 
 ```bash
 # 验证 JSON 格式
-python -m json.tool notification_config.json
-python -m json.tool ai_filter_config.json
-python -m json.tool email_monitor_config.json
+python -m json.tool data/notification_config.json
+python -m json.tool data/email_monitor_config.json
 ```
 
 ## 📊 监控和日志
 
-### 1. n8n 执行监控
+### 1. 定时任务监控
 
-- 查看 n8n 执行历史
-- 监控工作流成功率
+- 监控 cron/systemd 日志
 - 设置执行失败告警
 
 ### 2. 系统日志
@@ -138,9 +78,6 @@ python -m json.tool email_monitor_config.json
 ```bash
 # 查看邮件监控日志
 tail -f email_monitor.log
-
-# 查看 n8n 日志
-tail -f ~/.n8n/logs/n8n.log
 
 # 查看系统资源使用
 htop
@@ -157,7 +94,7 @@ python scripts/email_monitor.py status
 python scripts/notification_service.py stats 7
 
 # 测试组件
-python scripts/setup_n8n_monitoring.py --test-only
+python scripts/email_monitor.py run
 ```
 
 ## 🔒 安全配置
@@ -178,8 +115,7 @@ python scripts/setup_n8n_monitoring.py --test-only
 
 ```bash
 # 设置合适的文件权限
-chmod 600 notification_config.json
-chmod 600 ai_filter_config.json
+chmod 600 data/notification_config.json
 chmod 600 accounts.json
 ```
 
@@ -240,7 +176,7 @@ cd /Users/leo/github.com/mcp-email-service
 python scripts/email_monitor.py run --verbose
 
 # 检查环境变量
-env | grep -E "(FEISHU|OPENAI|PYTHONPATH)"
+env | grep -E "(FEISHU|OPENAI|API_SECRET|TELEGRAM)"
 
 # 测试 webhook
 curl -X POST "$FEISHU_WEBHOOK" \
@@ -268,17 +204,15 @@ tail -50 email_monitor.log | grep -E "(INFO|ERROR|WARNING)"
 
 ```bash
 # 开发环境
-export N8N_ENV="development"
 export FEISHU_WEBHOOK="$DEV_FEISHU_WEBHOOK"
 
-# 生产环境  
-export N8N_ENV="production"
+# 生产环境
 export FEISHU_WEBHOOK="$PROD_FEISHU_WEBHOOK"
 ```
 
 ### 2. 负载均衡
 
-如果有多个 n8n 实例：
+如果有多个调度实例：
 
 ```bash
 # 使用不同的 cron 偏移
@@ -291,7 +225,7 @@ export FEISHU_WEBHOOK="$PROD_FEISHU_WEBHOOK"
 ```bash
 # 备份配置文件
 tar -czf email_monitor_backup_$(date +%Y%m%d).tar.gz \
-  *.json scripts/ n8n/ config_templates/
+  *.json scripts/ config_templates/
 
 # 恢复配置
 tar -xzf email_monitor_backup_YYYYMMDD.tar.gz
@@ -300,7 +234,7 @@ tar -xzf email_monitor_backup_YYYYMMDD.tar.gz
 ## ✅ 部署检查清单
 
 - [ ] 环境变量已设置并验证
-- [ ] n8n 工作流已导入并测试
+- [ ] 定时任务已配置并测试
 - [ ] 脚本权限和路径正确
 - [ ] 配置文件格式验证通过
 - [ ] Webhook 连接测试成功
@@ -314,7 +248,7 @@ tar -xzf email_monitor_backup_YYYYMMDD.tar.gz
 
 遇到问题时的排查顺序：
 
-1. 检查 n8n 执行历史和错误信息
+1. 检查定时任务执行记录和错误信息
 2. 查看脚本日志文件
 3. 手动执行脚本验证
 4. 检查环境变量和配置

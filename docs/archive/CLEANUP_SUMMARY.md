@@ -114,7 +114,6 @@ mv SYNC_VERIFICATION_GUIDE.md docs/archive/
 
 ### 4. 删除配置文件副本 (4 个文件)
 ```bash
-rm -f ai_filter_config.json
 rm -f email_monitor_config.json
 rm -f lark_webhook_config.json
 rm -f notification_config.json
@@ -222,4 +221,3 @@ tree docs/ -L 2
 
 **维护者**: MCP Email Service Team  
 **状态**: 已完成 ✅
-

@@ -7,7 +7,7 @@
 1. **定时获取未读邮件** - 每 10 分钟执行一次
 2. **智能翻译** - 非中文邮件自动翻译成中文
 3. **生成摘要** - 使用 OpenAI 生成中文摘要
-4. **发送飞书通知** - 推送到飞书群
+4. **发送飞书通知** - 调用方根据返回内容推送
 5. **标记已读** - 自动标记为已读
 
 ## 🔄 工作流程
@@ -102,46 +102,12 @@ OPENAI_API_KEY=sk-your-openai-key
 
 # API 安全
 API_SECRET_KEY=$(openssl rand -hex 32)
-EMAIL_API_URL=https://your-domain.com
+
+# 飞书 Webhook（可选）
+FEISHU_WEBHOOK=https://open.larksuite.com/open-apis/bot/v2/hook/xxx
 ```
 
-### 2. 在 n8n 中设置环境变量
-
-访问 https://n8n.ifoodme.com/settings/environments
-
-添加：
-- `EMAIL_API_URL` = `https://your-domain.com`
-- `EMAIL_API_KEY` = `your-api-secret-key`
-- `FEISHU_WEBHOOK` = `https://open.larksuite.com/open-apis/bot/v2/hook/xxx`
-
-### 3. 部署工作流
-
-```bash
-# 方法 1: 使用脚本
-uv run python -c "
-import json, sys
-sys.path.insert(0, '.')
-from scripts.setup_n8n_workflow import N8NWorkflowManager
-import os
-
-manager = N8NWorkflowManager(
-    os.getenv('N8N_URL', 'https://n8n.ifoodme.com'),
-    os.getenv('N8N_API_KEY')
-)
-
-with open('n8n/email_translate_workflow.json') as f:
-    workflow = json.load(f)
-    
-result = manager.create_workflow(workflow)
-print(f'✅ 工作流已创建: {result[\"id\"]}')
-print(f'URL: https://n8n.ifoodme.com/workflow/{result[\"id\"]}')
-"
-
-# 方法 2: 手动导入
-# 在 n8n 中导入 n8n/email_translate_workflow.json
-```
-
-### 4. 启动 API 服务
+### 2. 启动 API 服务
 
 ```bash
 # 确保设置了环境变量
@@ -152,34 +118,27 @@ export API_SECRET_KEY="your-secret"
 uv run uvicorn scripts.email_monitor_api:app --port 18888
 ```
 
-### 5. 测试
+### 3. 设置本地定时任务
+
+```bash
+# 每 10 分钟触发翻译（按需处理返回的 email_ids）
+*/10 * * * * curl -X POST http://localhost:18888/api/translate-unread -H "X-API-Key: your-secret-key"
+```
+
+### 4. 测试
 
 ```bash
 # 测试翻译 API
-curl -X POST https://your-domain.com/api/translate-unread \
+curl -X POST http://localhost:18888/api/translate-unread \
   -H "X-API-Key: your-secret-key"
-
-# 在 n8n 中测试工作流
-# 点击 "Execute Workflow"
 ```
 
-### 6. 激活工作流
-
-在 n8n 中点击右上角的开关激活工作流。
-
-## 📊 工作流配置
+## 📊 本地调度配置
 
 ### 定时频率
 
-默认每 10 分钟运行一次，可以修改 cron 表达式：
+默认每 10 分钟运行一次，可修改 cron 表达式：
 
-```json
-{
-  "cronExpression": "*/10 * * * *"  // 每10分钟
-}
-```
-
-常用配置：
 - `*/5 * * * *` - 每 5 分钟
 - `*/15 * * * *` - 每 15 分钟
 - `0 * * * *` - 每小时
@@ -193,9 +152,12 @@ curl -X POST https://your-domain.com/api/translate-unread \
 
 ```python
 fetch_result = await asyncio.to_thread(
-    call_email_tool,
-    "list_emails",
-    json.dumps({"unread_only": True, "limit": 50})  # 改为 50
+    svc.list_emails,
+    limit=50,
+    unread_only=True,
+    folder="INBOX",
+    account_id=None,
+    use_cache=False
 )
 ```
 
@@ -321,10 +283,9 @@ export OPENAI_API_KEY="sk-your-key"
 
 **问题**: `email_ids` 格式错误
 
-**解决**: 检查 n8n 中的数据传递，确保是数组格式：
+**解决**: 确保请求体是数组格式：
 ```json
-{{ $json.email_ids }}  // 正确
-{{ JSON.stringify($json.email_ids) }}  // 错误
+["email-id-1", "email-id-2"]
 ```
 
 ### 飞书通知未收到
@@ -332,7 +293,7 @@ export OPENAI_API_KEY="sk-your-key"
 **问题**: Webhook URL 错误
 
 **解决**: 
-1. 检查 n8n 环境变量 `FEISHU_WEBHOOK`
+1. 检查环境变量 `FEISHU_WEBHOOK`
 2. 测试 Webhook: `curl -X POST $FEISHU_WEBHOOK -d '{"msg_type":"text","content":{"text":"test"}}'`
 
 ## 📚 相关文档

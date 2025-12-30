@@ -1,6 +1,6 @@
 # 🎯 从这里开始！
 
-欢迎使用 MCP 邮件服务 + n8n AI 智能监控系统！
+欢迎使用 MCP 邮件服务 + n8n 邮件监控系统！
 
 ## ⚡ 超快速开始 (3 分钟)
 
@@ -56,7 +56,7 @@ uv run python scripts/test_n8n_api.py
 ## 🎁 你会得到什么
 
 ✅ **自动化邮件监控** - 每 5 分钟自动检查  
-✅ **AI 智能过滤** - 自动识别重要邮件  
+✅ **邮件通知** - 自动发送通知  
 ✅ **实时通知** - 飞书群组即时提醒  
 ✅ **去重保护** - 避免重复打扰  
 ✅ **生产级稳定** - 完善的错误处理  
@@ -101,12 +101,10 @@ export N8N_API_KEY="your_api_key"  # n8n API 密钥
 ```bash
 export N8N_URL="https://n8n.ifoodme.com"
 export FEISHU_WEBHOOK="your_webhook_url"
-export OPENAI_API_KEY="your_openai_key"  # AI 过滤
 ```
 
 ## 💡 小提示
 
-- 🤖 没有 OpenAI API Key？没关系！系统会自动回退到关键词过滤
 - 📱 想换通知平台？编辑 `notification_config.json` 支持钉钉/企微/Slack
 - ⏰ 想改频率？在 n8n 工作流中修改 cron 表达式
 - 🔍 遇到问题？查看 `email_monitor.log` 日志文件
@@ -116,7 +114,7 @@ export OPENAI_API_KEY="your_openai_key"  # AI 过滤
 ### 快速诊断
 ```bash
 # 检查环境变量
-env | grep -E "(N8N|FEISHU|OPENAI)"
+env | grep -E "(N8N|FEISHU)"
 
 # 查看日志
 tail -f email_monitor.log
@@ -129,15 +127,14 @@ uv run python scripts/setup_n8n_monitoring.py --check-only
 1. **API 连接失败** → 检查 N8N_API_KEY 和网络
 2. **工作流导入失败** → 确认 API Key 权限
 3. **通知不工作** → 测试 webhook URL
-4. **AI 过滤失败** → 系统会自动回退，不影响运行
 
 ## 📊 系统架构
 
 ```
-┌─────────────┐    ┌──────────────┐    ┌─────────────┐    ┌──────────────┐
-│   n8n 定时   │───▶│  邮件获取     │───▶│  AI 过滤     │───▶│  飞书通知     │
-│   (5分钟)    │    │  (MCP工具)   │    │  (智能判断)  │    │  (实时推送)   │
-└─────────────┘    └──────────────┘    └─────────────┘    └──────────────┘
+┌─────────────┐    ┌──────────────┐    ┌──────────────┐
+│   n8n 定时   │───▶│  邮件获取     │───▶│  飞书通知     │
+│   (5分钟)    │    │  (MCP工具)   │    │  (实时推送)   │
+└─────────────┘    └──────────────┘    └──────────────┘
 ```
 
 ## 🎉 开始你的智能邮件管理之旅！

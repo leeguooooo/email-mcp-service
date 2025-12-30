@@ -1,6 +1,6 @@
 # 🚀 HTTP API 方案快速开始
 
-**正确的架构**: Python HTTP 服务 + n8n HTTP Request
+**推荐架构**: Python HTTP 服务 + 本地定时任务/脚本调用
 
 ## ⚡ 3 步部署
 
@@ -32,44 +32,31 @@ curl -X POST http://localhost:18888/api/check-emails
 curl -X POST http://localhost:18888/api/test-notification
 ```
 
-### 3. 部署 n8n 工作流
+### 3. 添加本地定时任务（可选）
 
 ```bash
-# 使用新的 HTTP 工作流
-export N8N_API_KEY="your_key"
-uv run python -c "
-import json, sys
-sys.path.insert(0, '.')
-from scripts.setup_n8n_workflow import N8NWorkflowManager
-import os
+# 直接运行脚本（无需 HTTP API）
+uv run python scripts/email_monitor.py run
 
-manager = N8NWorkflowManager(
-    os.getenv('N8N_URL', 'https://n8n.ifoodme.com'),
-    os.getenv('N8N_API_KEY')
-)
+# 使用 cron 调度（每 5 分钟）
+*/5 * * * * cd /path/to/mcp-email-service && uv run python scripts/email_monitor.py run
 
-# 导入新的 HTTP 工作流
-with open('n8n/email_monitoring_http_workflow.json') as f:
-    workflow = json.load(f)
-    
-result = manager.create_workflow(workflow)
-print(f'✅ 工作流已创建: {result[\"id\"]}')
-print(f'URL: https://n8n.ifoodme.com/workflow/{result[\"id\"]}')
-"
+# 每天 08:30 生成汇总
+30 8 * * * cd /path/to/mcp-email-service && uv run python scripts/daily_email_digest.py run
 ```
 
 ## 📊 架构图
 
 ```
 ┌─────────────────┐
-│   n8n 云服务     │
-│  (定时触发)      │
+│ 本地定时任务/脚本 │
+│ (cron/schedule) │
 └────────┬────────┘
-         │ HTTP Request
+         │ HTTP Request (可选)
          ↓
 ┌─────────────────┐
 │  FastAPI Service│ ← 你的服务器
-│  (Port 8000)    │
+│  (Port 18888)   │
 └────────┬────────┘
          │ 调用
          ↓
@@ -80,23 +67,14 @@ print(f'URL: https://n8n.ifoodme.com/workflow/{result[\"id\"]}')
          │ 返回结果
          ↓
 ┌─────────────────┐
-│   n8n 接收      │
-│  (发送飞书通知) │
+│ 通知发送         │
+│ (Lark/Telegram) │
 └─────────────────┘
 ```
 
-## 🔧 配置 n8n 工作流
+## 🔧 API 调用示例
 
-在 n8n 中你会看到：
-
-1. **定时触发** - 每5分钟运行
-2. **调用邮件检查API** - HTTP Request 到 `http://localhost:8000/api/check-emails`
-3. **检查结果** - 判断是否有重要邮件
-4. **发送飞书通知** - 如果有重要邮件
-
-### 修改 API 地址
-
-在 n8n 工作流的"调用邮件检查API"节点中，将 URL 改为：
+通过 HTTP API 触发检查：
 
 - **本地测试**: `http://localhost:18888/api/check-emails`
 - **服务器部署**: `http://your-server-ip:18888/api/check-emails`
@@ -257,21 +235,19 @@ async def check_emails(request: Request):
     ...
 ```
 
-## 🎯 优势对比
+## 🎯 使用方式对比
 
-| 特性 | Execute Command | HTTP API |
-|------|-----------------|----------|
-| n8n 兼容性 | 仅自建版 | ✅ 所有版本 |
-| 部署复杂度 | 高（容器配置） | ✅ 低（独立服务） |
-| 可扩展性 | 低 | ✅ 高 |
-| 监控调试 | 困难 | ✅ 简单 |
-| Python 依赖 | 需要容器内安装 | ✅ 独立管理 |
-| 代码修改 | 无需 | ✅ 无需 |
+| 特性 | 直接脚本（cron/schedule） | HTTP API |
+|------|-------------------------|----------|
+| 部署复杂度 | 低 | 中 |
+| 可扩展性 | 中 | 高 |
+| 监控调试 | 简单 | 简单 |
+| 调度方式 | 本地定时 | 任意 HTTP 调用 |
 
 ## ✅ 现在可以
 
-1. **本地测试**: 启动 API + 在 n8n 中测试
-2. **生产部署**: systemd/Docker + 配置域名
-3. **开始使用**: 激活 n8n 工作流
+1. **本地测试**: 启动 API 或直接运行脚本
+2. **生产部署**: systemd/Docker + 配置域名（HTTP API 可选）
+3. **开始使用**: 配置 cron 或常驻进程
 
-**Python 代码完全不用改，只是加了个 HTTP 接口！** 🎉
+**HTTP API 是可选组件，直接脚本也可完成全部流程。** 🎉

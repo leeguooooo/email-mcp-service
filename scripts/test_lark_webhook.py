@@ -139,6 +139,6 @@ if __name__ == "__main__":
     
     print("\n✅ 测试完成!")
     print("\n💡 如果测试成功，你可以:")
-    print("1. 将 webhook URL 添加到 notification_config.json")
-    print("2. 在 n8n 工作流中使用这个配置")
+    print("1. 将 webhook URL 添加到 data/notification_config.json")
+    print("2. 在本地定时任务脚本中使用这个配置")
     print("3. 开始享受自动邮件通知!")

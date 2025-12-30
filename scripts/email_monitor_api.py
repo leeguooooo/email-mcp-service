@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
 邮件监控 HTTP API 服务
-供 n8n 通过 HTTP Request 调用
+供本地自动化或其他系统通过 HTTP 调用
 """
 import sys
 import os
-import json
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
@@ -61,11 +60,11 @@ async def verify_api_key(x_api_key: str = Header(None, alias="X-API-Key")):
 # 创建 FastAPI 应用
 app = FastAPI(
     title="Email Monitor API",
-    description="MCP Email Service HTTP API for n8n",
+    description="MCP Email Service HTTP API",
     version="1.0.0"
 )
 
-# 添加 CORS 支持（允许 n8n 调用）
+# 添加 CORS 支持（允许外部调用）
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -182,15 +181,15 @@ async def health_check():
 @app.post("/api/check-emails", response_model=CheckEmailsResponse, dependencies=[Depends(verify_api_key)])
 async def check_emails():
     """
-    检查邮件并返回重要邮件 (需要 API Key)
+    检查邮件并返回监控结果 (需要 API Key)
     
     这个接口会：
     1. 获取未读邮件
-    2. AI 过滤重要邮件
+    2. 生成通知结果
     3. 返回结果和通知内容
     
     认证: 需要在 Header 中提供 X-API-Key
-    n8n 收到后可以直接发送通知
+    调用方可根据返回结果直接发送通知
     """
     try:
         logger.info("开始检查邮件...")
@@ -541,12 +540,17 @@ async def translate_unread_emails():
         logger.info("开始获取和翻译未读邮件...")
         
         # 1. 获取未读邮件
-        from scripts.call_email_tool import run as call_email_tool
-        
+        from src.account_manager import AccountManager
+        from src.services.email_service import EmailService
+
+        svc = EmailService(AccountManager())
         fetch_result = await asyncio.to_thread(
-            call_email_tool,
-            "list_emails",
-            json.dumps({"unread_only": True, "limit": 20})
+            svc.list_emails,
+            limit=20,
+            unread_only=True,
+            folder="INBOX",
+            account_id=None,
+            use_cache=False
         )
         
         if not fetch_result.get("success"):
@@ -646,13 +650,16 @@ async def mark_emails_as_read(email_ids: List[str]):
     try:
         logger.info(f"标记 {len(email_ids)} 封邮件为已读...")
         
-        from scripts.call_email_tool import run as call_email_tool
-        
-        # 批量标记已读
+        from src.account_manager import AccountManager
+        from src.services.email_service import EmailService
+
+        svc = EmailService(AccountManager())
         result = await asyncio.to_thread(
-            call_email_tool,
-            "mark_read",
-            json.dumps({"email_ids": email_ids})
+            svc.mark_emails,
+            email_ids,
+            "read",
+            "INBOX",
+            None
         )
         
         if not result.get("success"):

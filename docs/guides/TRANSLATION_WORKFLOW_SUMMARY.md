@@ -4,12 +4,12 @@
 
 根据你的需求，我们实现了：
 
-✅ **n8n 定时触发** - 每 10 分钟自动执行  
+✅ **本地定时触发** - 每 10 分钟自动执行  
 ✅ **获取未读邮件** - 通过 MCP 服务获取所有未读  
 ✅ **智能语言检测** - 自动识别中文/非中文  
 ✅ **OpenAI 翻译** - 非中文邮件翻译成中文  
 ✅ **生成中文摘要** - 所有邮件生成中文摘要  
-✅ **发送飞书通知** - 推送到飞书群  
+✅ **发送飞书通知** - 调用方推送到飞书群  
 ✅ **标记已读** - 自动标记为已读  
 
 ## 📁 新增文件
@@ -30,17 +30,7 @@
 - ✅ API Key 认证保护
 - ✅ 返回飞书消息格式
 
-### 3. `n8n/email_translate_workflow.json`
-**n8n 工作流定义**
-
-- ✅ 定时触发（每10分钟）
-- ✅ 调用翻译 API
-- ✅ 检查是否有邮件
-- ✅ 发送飞书通知
-- ✅ 标记已读
-- ✅ 完整的错误处理
-
-### 4. `EMAIL_TRANSLATE_WORKFLOW_GUIDE.md`
+### 3. `EMAIL_TRANSLATE_WORKFLOW_GUIDE.md`
 **完整使用文档**
 
 - ✅ 功能说明
@@ -72,8 +62,8 @@ GET /api/translate-unread
 
 ## 💡 与之前方案的区别
 
-### 旧方案（AI 过滤）
-- ❌ 复杂：获取 → AI 过滤 → 通知
+### 旧方案（邮件筛选）
+- ❌ 复杂：获取 → 筛选 → 通知
 - ❌ 只处理"重要"邮件
 - ❌ 不翻译
 - ❌ 不标记已读
@@ -112,13 +102,8 @@ GET /api/translate-unread
 ```bash
 OPENAI_API_KEY=sk-your-key
 API_SECRET_KEY=$(openssl rand -hex 32)
-EMAIL_API_URL=https://your-domain.com
+FEISHU_WEBHOOK=https://open.larksuite.com/...
 ```
-
-**n8n 环境变量**:
-- `EMAIL_API_URL`
-- `EMAIL_API_KEY`
-- `FEISHU_WEBHOOK`
 
 ### 2. 启动服务
 
@@ -126,11 +111,11 @@ EMAIL_API_URL=https://your-domain.com
 uv run uvicorn scripts.email_monitor_api:app --port 18888
 ```
 
-### 3. 部署 n8n 工作流
+### 3. 设置本地定时任务
 
 ```bash
-# 导入 n8n/email_translate_workflow.json
-# 或使用 scripts/setup_n8n_workflow.py
+# 每 10 分钟触发翻译（按需自行处理返回的 email_ids）
+*/10 * * * * curl -X POST http://localhost:18888/api/translate-unread -H "X-API-Key: your-key"
 ```
 
 ### 4. 测试
@@ -139,14 +124,11 @@ uv run uvicorn scripts.email_monitor_api:app --port 18888
 # 测试 API
 curl -X POST https://your-domain.com/api/translate-unread \
   -H "X-API-Key: your-key"
-
-# 测试 n8n 工作流
-# 在 n8n 中点击 "Execute Workflow"
 ```
 
 ### 5. 激活
 
-在 n8n 中激活工作流，开始自动运行！
+配置 cron 或常驻进程后即可自动运行。
 
 ## 🎨 飞书消息示例
 
@@ -173,7 +155,6 @@ curl -X POST https://your-domain.com/api/translate-unread \
 ### 新增代码
 - [ ] `scripts/email_translator.py` - 翻译模块
 - [ ] `scripts/email_monitor_api.py` (新增 2 个端点)
-- [ ] `n8n/email_translate_workflow.json` - 工作流
 
 ### 文档
 - [ ] `EMAIL_TRANSLATE_WORKFLOW_GUIDE.md`
@@ -197,7 +178,7 @@ curl -X POST https://your-domain.com/api/translate-unread \
 所有代码已完成，等待你的 review 和批准后提交！
 
 **这个方案完全符合你的需求：**
-- ✅ n8n 定时执行
+- ✅ 本地定时执行
 - ✅ 获取未读
 - ✅ 翻译成中文
 - ✅ 生成总结

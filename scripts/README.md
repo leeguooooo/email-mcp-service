@@ -34,7 +34,7 @@
 **使用的 MCP 工具**:
 - `list_emails` - 获取邮件列表
 - `get_email_detail` - 获取邮件详情
-- AI过滤器分类邮件
+- 规则分类邮件
 
 **运行方式**:
 ```bash
@@ -69,44 +69,7 @@ uv run python scripts/inbox_organizer.py --account-id user@example.com
 - 生成结构化建议
 - 提供中文摘要（可选）
 
-### 2. `ai_email_filter.py` - AI 过滤器示例
-
-**功能**: 使用 OpenAI/Anthropic API 进行邮件分类
-
-**特性**:
-- 支持多种 AI 提供商（OpenAI, Anthropic, 本地模型）
-- 基于规则的预过滤（spam/marketing/system/newsletter）
-- 返回分类结果和建议操作
-
-**运行方式**:
-```bash
-# 从 JSON 文件读取
-python scripts/ai_email_filter.py emails.json
-
-# 从命令行传 JSON
-python scripts/ai_email_filter.py '[{"id":"123","subject":"Test","from":"user@example.com"}]'
-```
-
-**配置文件**: `ai_filter_config.json`
-```json
-{
-  "ai_provider": "openai",
-  "model": "gpt-3.5-turbo",
-  "api_key_env": "OPENAI_API_KEY",
-  "filter_rules": {
-    "spam_indicators": ["lottery", "winner", "中奖"],
-    "marketing_keywords": ["sale", "discount", "限时优惠"],
-    "system_keywords": ["alert", "notification", "安全"]
-  }
-}
-```
-
-**定位**: 这是**AI 集成示例**，展示如何：
-- 集成第三方 AI API
-- 实现规则+AI 混合分类
-- 返回结构化分类结果
-
-### 3. `email_translator.py` - 翻译示例
+### 2. `email_translator.py` - 翻译示例
 
 **功能**: 调用 OpenAI API 翻译邮件内容并生成摘要
 
@@ -131,7 +94,7 @@ result = translator.translate_and_summarize(emails)
 - 批量处理邮件
 - 返回多语言支持
 
-### 4. `email_monitor_api.py` - HTTP API 包装
+### 3. `email_monitor_api.py` - HTTP API 包装
 
 **功能**: 将 MCP 工具和示例脚本暴露为 HTTP API
 
@@ -159,25 +122,43 @@ curl -X POST "http://localhost:18888/api/organize-inbox?limit=15" \
 ```
 
 **定位**: 这是**可选部署组件**，用于：
-- n8n 等自动化平台集成
+- 外部自动化平台集成
 - 不支持 MCP 协议的系统
 - HTTP-based AI agents
 
-### 5. `email_monitor.py` - 监控示例
+### 4. `email_monitor.py` - 监控示例
 
-**功能**: 定期检查邮件并发送通知（结合 AI 过滤）
+**功能**: 定期检查邮件并发送通知
 
 **运行方式**:
 ```bash
 python scripts/email_monitor.py
 ```
 
-**配置**: `email_monitor_config.json`
+**配置**: `data/email_monitor_config.json`
 
 **定位**: 这是**自动化示例**，展示如何：
 - 定期轮询邮件
-- 使用 AI 过滤重要邮件
 - 发送飞书/Lark 通知
+
+### 5. `daily_email_digest.py` - 每日汇总调度
+
+**功能**: 获取昨天邮件并生成摘要，支持 Lark/Telegram 通知
+
+**运行方式**:
+```bash
+# 单次运行
+python scripts/daily_email_digest.py run
+
+# 常驻调度
+python scripts/daily_email_digest.py daemon
+```
+
+**配置**: `data/daily_digest_config.json`
+
+**定位**: 这是**本地定时示例**，展示如何：
+- 每日汇总邮件
+- 使用 AI 分类与摘要
 
 ## 🚀 使用方式
 
@@ -187,7 +168,7 @@ python scripts/email_monitor.py
 # 1. 整理收件箱
 uv run python scripts/inbox_organizer.py --text
 
-# 2. 启动 HTTP API（用于 n8n）
+# 2. 启动 HTTP API（可选）
 export API_SECRET_KEY="your-key"
 python scripts/email_monitor_api.py
 ```
@@ -243,38 +224,7 @@ python examples/my_organizer.py
 
 ### 常见定制场景
 
-#### 场景 1: 使用本地 AI 模型
-
-修改 `ai_email_filter.py`:
-```python
-# 原：使用 OpenAI
-client = openai.OpenAI(api_key=api_key)
-
-# 改：使用本地 Ollama
-import requests
-response = requests.post("http://localhost:11434/api/generate", json={
-    "model": "llama2",
-    "prompt": prompt
-})
-```
-
-#### 场景 2: 自定义分类规则
-
-修改 `ai_filter_config.json`:
-```json
-{
-  "filter_rules": {
-    "high_priority_senders": ["boss@company.com", "ceo@company.com"],
-    "spam_indicators": ["FREE", "WINNER", "点击领取"],
-    "custom_categories": {
-      "bills": ["invoice", "payment", "账单"],
-      "meetings": ["meeting", "会议", "zoom"]
-    }
-  }
-}
-```
-
-#### 场景 3: 集成其他通知服务
+#### 场景 1: 集成其他通知服务
 
 修改 `email_monitor.py`:
 ```python
@@ -315,7 +265,7 @@ async def fetch_headers_parallel(email_ids):
 ### 缓存策略
 
 ```python
-# 缓存 AI 分类结果
+# 缓存分类结果
 import json
 from pathlib import Path
 
@@ -327,7 +277,7 @@ def classify_with_cache(email_id, content):
     if email_id in cache:
         return cache[email_id]
     
-    result = ai_classify(content)
+    result = classify(content)
     cache[email_id] = result
     json.dump(cache, open(cache_file, 'w'))
     
@@ -339,9 +289,6 @@ def classify_with_cache(email_id, content):
 ### 单元测试
 
 ```bash
-# 测试 AI 过滤器
-pytest tests/test_ai_email_filter.py
-
 # 测试整理器
 pytest tests/test_inbox_organizer.py
 ```
@@ -357,7 +304,6 @@ python scripts/test_workflow.py
 
 - [MCP 设计原则](../docs/guides/MCP_DESIGN_PRINCIPLES.md) - 理解 MCP 定位
 - [HTTP API 快速开始](../docs/guides/HTTP_API_QUICK_START.md) - 部署 HTTP API
-- [N8N 集成指南](../docs/guides/N8N_EMAIL_MONITORING_GUIDE.md) - n8n 工作流
 - [翻译工作流总结](../docs/guides/TRANSLATION_WORKFLOW_SUMMARY.md) - 翻译示例说明
 
 ## 💡 最佳实践
@@ -394,4 +340,3 @@ python scripts/test_workflow.py
 ---
 
 **记住**: 这些脚本是**教学工具**和**集成参考**，真正的强大之处在于你的 AI 如何组合使用底层的 MCP 原子操作！ 🚀
-

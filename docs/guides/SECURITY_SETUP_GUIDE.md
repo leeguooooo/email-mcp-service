@@ -16,10 +16,9 @@
 ```
 
 ✅ **推荐**:
-```json
-{
-  "url": "={{ $env.EMAIL_API_URL }}"
-}
+```python
+api_base_url = os.getenv("API_BASE_URL", "http://localhost:18888")
+url = f"{api_base_url}/api/check-emails"
 ```
 
 ### 2. 使用环境变量
@@ -30,50 +29,21 @@
 - Webhook URL
 - 数据库连接字符串
 
-## 📝 n8n 环境变量设置
+## 📝 本地环境变量设置
 
-### 步骤 1: 访问 n8n 设置
-
-1. 登录 n8n: https://n8n.ifoodme.com/
-2. 进入 **Settings** → **Environments**
-
-### 步骤 2: 添加环境变量
-
-添加以下环境变量：
+在服务器或本地 `.env` 中设置环境变量：
 
 | 变量名 | 说明 | 示例值 |
 |--------|------|--------|
-| `EMAIL_API_URL` | 邮件 API 基础地址 | `https://your-domain.com` (不含 /api/xxx) |
+| `API_BASE_URL` | HTTP API 基础地址 | `http://localhost:18888` |
+| `API_SECRET_KEY` | HTTP API 认证密钥 | `openssl rand -hex 32` |
 | `FEISHU_WEBHOOK` | 飞书 Webhook | `https://open.larksuite.com/open-apis/bot/v2/hook/xxx` |
+| `OPENAI_API_KEY` | AI 能力密钥 | `sk-xxx` |
 
-**注意**: 
-- `EMAIL_API_URL` 只填写基础域名（如 `https://your-domain.com`）
-- 具体的 API 端点路径（如 `/api/translate-unread`）由 n8n 工作流自动拼接
-- 不要在截图中暴露完整的 URL
-- 不要在公开文档中写入真实值
+**注意**:
+- 不要在截图或公开文档中暴露完整的 URL/密钥
+- 生产环境建议用系统环境变量或 secret manager
 - 定期轮换敏感信息
-
-**URL 配置示例**：
-```
-✅ 正确: EMAIL_API_URL=https://your-domain.com
-❌ 错误: EMAIL_API_URL=https://your-domain.com/api/check-emails
-```
-
-工作流会自动拼接成：
-- `https://your-domain.com/api/translate-unread`
-- `https://your-domain.com/api/mark-read`
-- `https://your-domain.com/api/check-emails`
-
-### 步骤 3: 在工作流中使用
-
-```json
-{
-  "parameters": {
-    "url": "={{ $env.EMAIL_API_URL }}",
-    "method": "POST"
-  }
-}
-```
 
 ## 🔐 API 服务安全
 
@@ -123,8 +93,8 @@ async def check_emails(request: Request):
 
 ```nginx
 location /api/ {
-    # 只允许 n8n 服务器访问
-    allow 1.2.3.4;  # n8n 服务器 IP
+    # 只允许调度服务器访问
+    allow 1.2.3.4;  # 调度服务器 IP
     deny all;
     
     proxy_pass http://localhost:18888;
@@ -136,18 +106,16 @@ location /api/ {
 ### 本地开发 `.env` 文件
 
 ```bash
-# 邮件 API 配置
-# 注意：只填基础域名，不要包含 /api/xxx 路径
-# 具体端点由 n8n 工作流自动拼接
-EMAIL_API_URL=https://your-domain.com
+# API 配置
+API_BASE_URL=http://localhost:18888
 API_SECRET_KEY=your-random-secret-key-here
-
-# n8n 配置
-N8N_URL=https://n8n.ifoodme.com
-N8N_API_KEY=your-n8n-api-key
 
 # 通知配置
 FEISHU_WEBHOOK=https://open.larksuite.com/open-apis/bot/v2/hook/xxx
+
+# Telegram（可选）
+TELEGRAM_BOT_TOKEN=123456:ABC-DEF
+TELEGRAM_CHAT_ID=123456789
 
 # AI 配置 (可选)
 OPENAI_API_KEY=sk-xxx
@@ -209,7 +177,6 @@ async def check_emails(request: Request):
 
 - [OWASP API Security Top 10](https://owasp.org/www-project-api-security/)
 - [FastAPI Security Best Practices](https://fastapi.tiangolo.com/tutorial/security/)
-- [n8n Security Documentation](https://docs.n8n.io/hosting/security/)
 
 ## ⚡ 快速安全部署
 
@@ -219,15 +186,9 @@ openssl rand -hex 32
 
 # 2. 设置环境变量
 export API_SECRET_KEY="生成的密钥"
-export EMAIL_API_URL="https://your-domain.com"  # 只填域名
+export FEISHU_WEBHOOK="https://open.larksuite.com/open-apis/bot/v2/hook/xxx"
 
-# 3. 在 n8n 中设置环境变量
-# (通过 Web 界面)
-
-# 4. 部署工作流
-uv run python scripts/deploy_http_workflow.py
-
-# 5. 测试（带认证）
+# 3. 测试（带认证）
 curl -X POST https://your-domain.com/api/check-emails \
   -H "X-Api-Key: 你的密钥"
 ```

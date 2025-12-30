@@ -39,7 +39,7 @@ MCP Email Service 专注于提供**细颗粒度的原子操作**，而非高层�
 def organize_inbox():
     """自动整理收件箱，分类垃圾邮件，生成摘要"""
     emails = list_emails()
-    spam = ai_filter(emails)  # ❌ AI 能力
+    spam = ai_model.classify_spam(emails)  # ❌ AI 能力
     summary = translate(emails)  # ❌ 翻译能力
     return {"spam": spam, "summary": summary}
 ```
@@ -167,7 +167,6 @@ summary = my_ai_model.summarize(important_ids)
 ### 示例脚本
 - `scripts/email_translator.py` - 翻译示例（调用 OpenAI API）
 - `scripts/inbox_organizer.py` - 整理示例（组合多个 MCP 工具）
-- `scripts/ai_email_filter.py` - AI 过滤示例（使用 OpenAI 分类）
 - `scripts/email_monitor_api.py` - HTTP API 包装（可选部署）
 
 这些脚本展示了**如何使用 MCP 原子操作组合成高级功能**，但不是 MCP 核心的一部分。
@@ -225,7 +224,6 @@ def smart_reply(email_id):
 ## 📖 参考文档
 
 - [HTTP API 快速开始](./HTTP_API_QUICK_START.md) - 如何部署 HTTP 包装
-- [N8N 集成指南](./N8N_EMAIL_MONITORING_GUIDE.md) - 在 n8n 中使用
 - [生产部署指南](./PRODUCTION_DEPLOYMENT_GUIDE.md) - 生产环境配置
 - [项目架构](../ARCHITECTURE.md) - 技术架构说明
 
@@ -238,4 +236,3 @@ def smart_reply(email_id):
 | **基础设施层** | IMAP/SMTP、缓存、同步 | 本项目 |
 
 **核心理念**: MCP = "乐高积木"，AI = "搭建者"
-
