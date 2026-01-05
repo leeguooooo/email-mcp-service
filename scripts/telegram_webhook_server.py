@@ -89,7 +89,7 @@ def _set_webhook(
 def main() -> None:
     args = _parse_args()
     host = args.host or os.getenv("TELEGRAM_WEBHOOK_HOST", "0.0.0.0")
-    port = int(args.port or os.getenv("TELEGRAM_WEBHOOK_PORT", "8090"))
+    port = int(args.port or os.getenv("TELEGRAM_WEBHOOK_PORT", "9142"))
     path = args.path or os.getenv("TELEGRAM_WEBHOOK_PATH", "/telegram/webhook")
     secret_token = args.secret_token or os.getenv("TELEGRAM_WEBHOOK_SECRET")
     public_url = args.public_url or os.getenv("TELEGRAM_WEBHOOK_URL")
