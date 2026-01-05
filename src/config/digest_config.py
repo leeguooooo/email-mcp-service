@@ -81,7 +81,23 @@ class DigestConfigManager:
             "api_base": "https://api.telegram.org",
             "parse_mode": "HTML",
             "title": "Daily Email Digest",
-            "max_highlights": 10
+            "max_highlights": 10,
+            "interactive": {
+                "enabled": False,
+                "page_size": 8,
+                "max_items": 40,
+                "session_ttl_hours": 48,
+                "session_path": "data/telegram_sessions.json",
+                "detail_max_chars": 2000,
+                "ai_summary_max_chars": 1200
+            },
+            "webhook": {
+                "enabled": False,
+                "host": "0.0.0.0",
+                "port": 8090,
+                "path": "/telegram/webhook",
+                "secret_token": None
+            }
         }
     }
 

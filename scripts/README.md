@@ -160,6 +160,21 @@ python scripts/daily_email_digest.py daemon
 - 每日汇总邮件
 - 使用 AI 分类与摘要
 
+### 6. `telegram_webhook_server.py` - Telegram 交互回调
+
+**功能**: 接收 Telegram webhook 回调，支持按钮查看单封邮件详情（原文 + AI 摘要）
+
+**运行方式**:
+```bash
+python scripts/telegram_webhook_server.py
+```
+
+**配置**: `data/daily_digest_config.json`
+- `telegram.interactive.enabled=true`
+- `telegram.webhook.host/port/path`
+
+**说明**: 需要在 Telegram 设置 Webhook（指向你公网可访问的 HTTPS 地址）。
+
 ## 🚀 使用方式
 
 ### 直接使用（快速体验）

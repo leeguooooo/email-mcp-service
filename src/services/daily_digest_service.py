@@ -10,6 +10,7 @@ import logging
 import os
 import quopri
 import re
+import secrets
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -20,6 +21,11 @@ import requests
 
 from ..config.digest_config import DigestConfigManager
 from ..config.paths import DIGEST_CONFIG_JSON
+from .telegram_interactive import (
+    TelegramSessionStore,
+    build_inline_keyboard,
+    build_menu_text
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +44,31 @@ class DailyDigestService:
             self.config_manager = DigestConfigManager(config_path or DIGEST_CONFIG_JSON)
         self.config = self.config_manager.config
         self._debug_config: Dict[str, Any] = {}
+        self._telegram_session_store: Optional[TelegramSessionStore] = None
+
+    def _resolve_repo_path(self, path_str: str) -> Path:
+        path = Path(path_str)
+        if path.is_absolute():
+            return path
+        repo_root = Path(__file__).resolve().parents[2]
+        return (repo_root / path).resolve()
+
+    def _get_session_store(self) -> Optional[TelegramSessionStore]:
+        telegram_cfg = self.config.get("telegram", {})
+        interactive_cfg = telegram_cfg.get("interactive", {})
+        if not isinstance(interactive_cfg, dict):
+            return None
+        if not interactive_cfg.get("enabled", False):
+            return None
+        session_path = interactive_cfg.get("session_path") or "data/telegram_sessions.json"
+        ttl_hours = int(interactive_cfg.get("session_ttl_hours", 48))
+        resolved_path = self._resolve_repo_path(session_path)
+        if not self._telegram_session_store:
+            self._telegram_session_store = TelegramSessionStore(
+                path=str(resolved_path),
+                ttl_hours=ttl_hours
+            )
+        return self._telegram_session_store
 
     def _resolve_debug_config(self, override: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         base = self.config.get("debug", {})
@@ -200,7 +231,12 @@ class DailyDigestService:
         for email in emails:
             if updated >= limit:
                 break
-            if self._get_preview(email):
+            subject = (email.get("subject") or "").strip()
+            sender = (email.get("from") or "").strip()
+            date_str = (email.get("date") or "").strip()
+            preview = self._get_preview(email)
+            needs_detail = not preview or not subject or not sender or not date_str
+            if not needs_detail:
                 continue
             email_id = email.get("id") or email.get("uid")
             account_id = email.get("account_id")
@@ -835,6 +871,80 @@ class DailyDigestService:
         cleaned = " ".join(lines)
         return re.sub(r"\s+", " ", cleaned).strip()
 
+    def extract_email_text(self, detail: Dict[str, Any]) -> str:
+        text = detail.get("body") or detail.get("html_body") or ""
+        if detail.get("html_body") and not detail.get("body"):
+            text = detail.get("html_body") or text
+        if detail.get("has_html") or detail.get("html_body"):
+            text = self._strip_html(text)
+        return self._clean_preview(text)
+
+    def summarize_single_email(
+        self,
+        subject: str,
+        sender: str,
+        date_str: str,
+        account: str,
+        content: str,
+        max_chars: int
+    ) -> Optional[str]:
+        cfg = self.config.get("summary_ai", {})
+        if not cfg.get("enabled", True):
+            return None
+
+        api_key = cfg.get("api_key") or os.getenv(cfg.get("api_key_env", "OPENAI_API_KEY"))
+        if not api_key:
+            logger.warning("OpenAI API key not found; skipping single email summary")
+            return None
+
+        try:
+            import openai
+        except ImportError:
+            logger.warning("OpenAI library not installed; skipping single email summary")
+            return None
+
+        client = openai.OpenAI(
+            api_key=api_key,
+            base_url=cfg.get("base_url")
+        )
+        trimmed = content[:max_chars] if max_chars > 0 else content
+        prompt = (
+            "请用中文总结下面这封邮件，输出纯文本（不要 Markdown/HTML）。\n"
+            "格式要求：\n"
+            "1) 一句话概述\n"
+            "2) 2-4条要点（以短句分行）\n"
+            "3) 若需要行动，请附上“行动建议：”后跟1-3条\n"
+            "不要杜撰未提供的信息。\n\n"
+            f"主题: {subject}\n"
+            f"发件人: {sender}\n"
+            f"账号: {account}\n"
+            f"时间: {date_str}\n"
+            "正文:\n"
+            f"{trimmed}"
+        )
+
+        if self._debug_enabled("dump_ai_input"):
+            self._write_debug_event("single_email_input", {
+                "prompt": prompt,
+                "content_len": len(trimmed)
+            })
+
+        response = client.chat.completions.create(
+            model=cfg.get("model", "gpt-3.5-turbo"),
+            messages=[
+                {"role": "system", "content": "你是邮件摘要助手。"},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2,
+            max_tokens=300
+        )
+        content_out = response.choices[0].message.content.strip()
+        if self._debug_enabled("dump_ai_output"):
+            self._write_debug_event("single_email_output", {
+                "response": content_out
+            })
+        return content_out or None
+
     def _truncate_text(self, text: str, max_len: int) -> str:
         if len(text) <= max_len:
             return text
@@ -1249,6 +1359,30 @@ class DailyDigestService:
             None
         )
 
+    def _build_telegram_interactive_items(
+        self,
+        emails: List[Dict[str, Any]],
+        max_items: int
+    ) -> List[Dict[str, Any]]:
+        items: List[Dict[str, Any]] = []
+        for email in emails:
+            email_id = email.get("id") or email.get("uid")
+            account_id = email.get("account_id") or email.get("account")
+            if not email_id or not account_id:
+                continue
+            items.append({
+                "id": str(email_id),
+                "account_id": account_id,
+                "folder": email.get("folder") or "INBOX",
+                "message_id": email.get("message_id"),
+                "subject": email.get("subject") or "",
+                "from": email.get("from") or "",
+                "date": email.get("date") or ""
+            })
+            if len(items) >= max_items:
+                break
+        return items
+
     def _build_lark_elements(
         self,
         date_label: str,
@@ -1383,7 +1517,8 @@ class DailyDigestService:
     def _send_telegram_notification(
         self,
         text: str,
-        parse_mode: Optional[str] = None
+        parse_mode: Optional[str] = None,
+        reply_markup: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         telegram_cfg = self.config.get("telegram", {})
         bot_token = telegram_cfg.get("bot_token")
@@ -1399,6 +1534,8 @@ class DailyDigestService:
         }
         if parse_mode:
             payload["parse_mode"] = parse_mode
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
 
         try:
             response = requests.post(
@@ -1492,6 +1629,38 @@ class DailyDigestService:
             missing_details=missing_details,
             emails=emails
         )
+        telegram_reply_markup = None
+        telegram_session_id = None
+        session_store = self._get_session_store()
+        interactive_cfg = telegram_cfg.get("interactive", {}) if telegram_cfg else {}
+        if session_store and isinstance(interactive_cfg, dict):
+            max_items = int(interactive_cfg.get("max_items", 40))
+            page_size = int(interactive_cfg.get("page_size", 8))
+            items = self._build_telegram_interactive_items(emails, max_items=max_items)
+            if items:
+                session_store.cleanup()
+                telegram_session_id = secrets.token_urlsafe(8)
+                base_text = telegram_text
+                telegram_text = build_menu_text(
+                    base_text=base_text,
+                    items=items,
+                    page=1,
+                    page_size=page_size,
+                    parse_mode=telegram_parse_mode
+                )
+                telegram_reply_markup = build_inline_keyboard(
+                    session_id=telegram_session_id,
+                    page=1,
+                    total_items=len(items),
+                    page_size=page_size
+                )
+                session_store.save_session(telegram_session_id, {
+                    "created_at": datetime.now().isoformat(),
+                    "base_text": base_text,
+                    "parse_mode": telegram_parse_mode or "HTML",
+                    "page_size": page_size,
+                    "items": items
+                })
 
         lark_result = None
         telegram_result = None
@@ -1501,8 +1670,24 @@ class DailyDigestService:
             if telegram_cfg.get("enabled", False):
                 telegram_result = self._send_telegram_notification(
                     telegram_text,
-                    telegram_parse_mode
+                    telegram_parse_mode,
+                    telegram_reply_markup
                 )
+                if telegram_session_id and telegram_result and telegram_result.get("success"):
+                    try:
+                        response_payload = json.loads(telegram_result.get("response", "{}"))
+                    except json.JSONDecodeError:
+                        response_payload = {}
+                    message_info = response_payload.get("result", {})
+                    session_store = self._get_session_store()
+                    if session_store and message_info:
+                        session_store.update_session(
+                            telegram_session_id,
+                            {
+                                "chat_id": message_info.get("chat", {}).get("id"),
+                                "message_id": message_info.get("message_id")
+                            }
+                        )
 
         return {
             "success": True,
@@ -1521,6 +1706,7 @@ class DailyDigestService:
             else None,
             "lark_payload": payload,
             "telegram_message": telegram_text,
+            "telegram_session_id": telegram_session_id,
             "notification": lark_result,
             "notifications": {
                 "lark": lark_result,
