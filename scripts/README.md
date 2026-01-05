@@ -180,6 +180,11 @@ python scripts/telegram_webhook_server.py --public-url https://your.domain/teleg
 
 **说明**: 需要在 Telegram 设置 Webhook（指向你公网可访问的 HTTPS 地址），可用上面的 `--public-url` 自动设置。
 
+**文字指令**:
+- 发送数字（例如 `1`）查看对应邮件详情
+- 发送 `菜单` 重新显示索引
+- 发送 `下一页` / `上一页` 切换分页
+
 ## 🚀 使用方式
 
 ### 直接使用（快速体验）

@@ -1705,6 +1705,7 @@ class DailyDigestService:
                     "base_text": base_text,
                     "parse_mode": telegram_parse_mode or "HTML",
                     "page_size": page_size,
+                    "current_page": 1,
                     "items": items
                 })
 

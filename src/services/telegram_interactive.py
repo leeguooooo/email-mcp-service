@@ -43,6 +43,12 @@ class TelegramSessionStore:
             return True
         return datetime.now() - created > self.ttl
 
+    def _parse_created_at(self, created_at: str) -> datetime:
+        try:
+            return datetime.fromisoformat(created_at)
+        except Exception:
+            return datetime.min
+
     def cleanup(self) -> None:
         with self._lock:
             data = self._load()
@@ -84,6 +90,25 @@ class TelegramSessionStore:
             sessions[session_id] = payload
             data["sessions"] = sessions
             self._save(data)
+
+    def get_latest_session_for_chat(
+        self,
+        chat_id: Optional[int]
+    ) -> Optional[Tuple[str, Dict[str, Any]]]:
+        with self._lock:
+            data = self._load()
+            sessions = data.get("sessions", {})
+            candidates = []
+            for session_id, payload in sessions.items():
+                if self._is_expired(payload.get("created_at", "")):
+                    continue
+                if chat_id is not None and payload.get("chat_id") != chat_id:
+                    continue
+                candidates.append((session_id, payload))
+            if not candidates:
+                return None
+            candidates.sort(key=lambda item: self._parse_created_at(item[1].get("created_at", "")))
+            return candidates[-1]
 
 
 def _escape(text: str) -> str:

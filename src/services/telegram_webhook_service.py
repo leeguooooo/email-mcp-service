@@ -7,6 +7,7 @@ import html as html_lib
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -149,18 +150,15 @@ class TelegramWebhookService:
             f"<pre>{raw_html}</pre>"
         ])
 
-    def _handle_detail(self, callback: Dict[str, Any], session_id: str, index: int) -> None:
-        if not self.session_store:
-            self._answer_callback(callback["id"], "交互会话未启用")
-            return
-        session = self.session_store.get_session(session_id)
-        if not session:
-            self._answer_callback(callback["id"], "会话已过期，请重新生成日报")
-            return
+    def _send_detail_for_session(
+        self,
+        session: Dict[str, Any],
+        index: int,
+        chat_id: Optional[int]
+    ) -> bool:
         items = session.get("items", [])
         if index is None or index < 1 or index > len(items):
-            self._answer_callback(callback["id"], "无效序号")
-            return
+            return False
         item = items[index - 1]
         email_id = item.get("id")
         account_id = item.get("account_id")
@@ -174,8 +172,7 @@ class TelegramWebhookService:
             message_id=message_id
         )
         if not detail.get("success", True):
-            self._answer_callback(callback["id"], "邮件详情获取失败")
-            return
+            return False
 
         raw_text = self.digest_service.extract_email_text(detail)
         summary = self.digest_service.summarize_single_email(
@@ -187,9 +184,22 @@ class TelegramWebhookService:
             max_chars=self.ai_summary_max_chars
         )
         message = self._build_detail_message(detail, summary, raw_text, self.detail_max_chars)
-        chat_id = callback.get("message", {}).get("chat", {}).get("id")
         if chat_id is not None:
             self._send_message(chat_id, message, "HTML")
+        return True
+
+    def _handle_detail(self, callback: Dict[str, Any], session_id: str, index: int) -> None:
+        if not self.session_store:
+            self._answer_callback(callback["id"], "交互会话未启用")
+            return
+        session = self.session_store.get_session(session_id)
+        if not session:
+            self._answer_callback(callback["id"], "会话已过期，请重新生成日报")
+            return
+        chat_id = callback.get("message", {}).get("chat", {}).get("id")
+        if not self._send_detail_for_session(session, index, chat_id):
+            self._answer_callback(callback["id"], "邮件详情获取失败")
+            return
         self._answer_callback(callback["id"], "已发送详情")
 
     def _handle_page(self, callback: Dict[str, Any], session_id: str, page: int) -> None:
@@ -222,11 +232,92 @@ class TelegramWebhookService:
         message_id = message.get("message_id")
         if chat_id is not None and message_id is not None:
             self._edit_message(chat_id, message_id, text, parse_mode, reply_markup)
+            self.session_store.update_session(session_id, {
+                "current_page": page,
+                "chat_id": chat_id,
+                "message_id": message_id
+            })
         self._answer_callback(callback["id"])
+
+    def _send_menu_for_session(self, chat_id: int, session_id: str, session: Dict[str, Any], page: int) -> None:
+        items = session.get("items", [])
+        base_text = session.get("base_text") or ""
+        parse_mode = session.get("parse_mode") or "HTML"
+        page_size = int(session.get("page_size", 8))
+        text = build_menu_text(
+            base_text=base_text,
+            items=items,
+            page=page,
+            page_size=page_size,
+            parse_mode=parse_mode
+        )
+        reply_markup = build_inline_keyboard(
+            session_id=session_id,
+            page=page,
+            total_items=len(items),
+            page_size=page_size
+        )
+        payload = {
+            "chat_id": chat_id,
+            "text": text,
+            "disable_web_page_preview": True
+        }
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
+        payload["reply_markup"] = reply_markup
+        self._telegram_request("sendMessage", payload)
+        if self.session_store:
+            self.session_store.update_session(session_id, {
+                "current_page": page,
+                "chat_id": chat_id
+            })
+
+    def _handle_text_command(self, message: Dict[str, Any]) -> None:
+        if not self.session_store:
+            return
+        chat_id = message.get("chat", {}).get("id")
+        if chat_id is None:
+            return
+        text = (message.get("text") or "").strip()
+        if not text:
+            return
+        latest = self.session_store.get_latest_session_for_chat(chat_id)
+        if not latest:
+            self._send_message(chat_id, "未找到可用的日报会话，请先发送日报。", None)
+            return
+        session_id, session = latest
+        lower = text.lower()
+
+        match = re.search(r"(?:查看|详情|detail)?\\s*(\\d+)$", text, re.IGNORECASE)
+        if match:
+            index = int(match.group(1))
+            if not self._send_detail_for_session(session, index, chat_id):
+                self._send_message(chat_id, "未找到该序号的邮件。", None)
+            return
+
+        if lower in {"菜单", "列表", "索引"}:
+            page = int(session.get("current_page", 1))
+            self._send_menu_for_session(chat_id, session_id, session, page)
+            return
+
+        if lower in {"下一页", "下页", "next"}:
+            page = int(session.get("current_page", 1)) + 1
+            self._send_menu_for_session(chat_id, session_id, session, page)
+            return
+
+        if lower in {"上一页", "上页", "prev"}:
+            page = int(session.get("current_page", 1)) - 1
+            if page < 1:
+                page = 1
+            self._send_menu_for_session(chat_id, session_id, session, page)
+            return
 
     def handle_update(self, update: Dict[str, Any]) -> Dict[str, Any]:
         callback = update.get("callback_query")
         if not callback:
+            message = update.get("message")
+            if message and message.get("text"):
+                self._handle_text_command(message)
             return {"success": True}
         data = callback.get("data", "")
         action, session_id, index = self._parse_callback_data(data)
