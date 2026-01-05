@@ -166,14 +166,16 @@ python scripts/daily_email_digest.py daemon
 
 **运行方式**:
 ```bash
+# 启动本地 webhook 服务
 python scripts/telegram_webhook_server.py
+
+# 启动并自动设置 Telegram webhook（需要公网 HTTPS 地址）
+python scripts/telegram_webhook_server.py --public-url https://your.domain/telegram/webhook
 ```
 
-**配置**: `data/daily_digest_config.json`
-- `telegram.interactive.enabled=true`
-- `telegram.webhook.host/port/path`
+**配置**: `data/daily_digest_config.json` 只需填 `telegram.bot_token` 和 `telegram.chat_id`
 
-**说明**: 需要在 Telegram 设置 Webhook（指向你公网可访问的 HTTPS 地址）。
+**说明**: 需要在 Telegram 设置 Webhook（指向你公网可访问的 HTTPS 地址），可用上面的 `--public-url` 自动设置。
 
 ## 🚀 使用方式
 

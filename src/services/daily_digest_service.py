@@ -29,6 +29,11 @@ from .telegram_interactive import (
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_TELEGRAM_SESSION_PATH = "data/telegram_sessions.json"
+DEFAULT_TELEGRAM_SESSION_TTL_HOURS = 48
+DEFAULT_TELEGRAM_PAGE_SIZE = 8
+DEFAULT_TELEGRAM_MAX_ITEMS = 40
+
 
 class DailyDigestService:
     """Daily digest workflow for yesterday's emails."""
@@ -45,6 +50,8 @@ class DailyDigestService:
         self.config = self.config_manager.config
         self._debug_config: Dict[str, Any] = {}
         self._telegram_session_store: Optional[TelegramSessionStore] = None
+        self._telegram_webhook_checked = False
+        self._telegram_webhook_url: Optional[str] = None
 
     def _resolve_repo_path(self, path_str: str) -> Path:
         path = Path(path_str)
@@ -54,14 +61,11 @@ class DailyDigestService:
         return (repo_root / path).resolve()
 
     def _get_session_store(self) -> Optional[TelegramSessionStore]:
-        telegram_cfg = self.config.get("telegram", {})
-        interactive_cfg = telegram_cfg.get("interactive", {})
-        if not isinstance(interactive_cfg, dict):
+        if not self._telegram_interactive_enabled():
             return None
-        if not interactive_cfg.get("enabled", False):
-            return None
-        session_path = interactive_cfg.get("session_path") or "data/telegram_sessions.json"
-        ttl_hours = int(interactive_cfg.get("session_ttl_hours", 48))
+        session_path = os.getenv("TELEGRAM_SESSION_PATH", DEFAULT_TELEGRAM_SESSION_PATH)
+        ttl_env = os.getenv("TELEGRAM_SESSION_TTL_HOURS")
+        ttl_hours = int(ttl_env) if ttl_env else DEFAULT_TELEGRAM_SESSION_TTL_HOURS
         resolved_path = self._resolve_repo_path(session_path)
         if not self._telegram_session_store:
             self._telegram_session_store = TelegramSessionStore(
@@ -69,6 +73,43 @@ class DailyDigestService:
                 ttl_hours=ttl_hours
             )
         return self._telegram_session_store
+
+    def _telegram_interactive_enabled(self) -> bool:
+        telegram_cfg = self.config.get("telegram", {})
+        if not telegram_cfg.get("enabled", False):
+            return False
+        env_value = os.getenv("TELEGRAM_INTERACTIVE", "").strip().lower()
+        if env_value in {"1", "true", "yes", "on"}:
+            return True
+        if env_value in {"0", "false", "no", "off"}:
+            return False
+        webhook_url = self._get_telegram_webhook_url()
+        return bool(webhook_url)
+
+    def _get_telegram_webhook_url(self) -> Optional[str]:
+        if self._telegram_webhook_checked:
+            return self._telegram_webhook_url
+        self._telegram_webhook_checked = True
+        telegram_cfg = self.config.get("telegram", {})
+        bot_token = telegram_cfg.get("bot_token")
+        if not bot_token:
+            return None
+        api_base = telegram_cfg.get("api_base", "https://api.telegram.org").rstrip("/")
+        try:
+            response = requests.post(
+                f"{api_base}/bot{bot_token}/getWebhookInfo",
+                json={},
+                timeout=8
+            )
+            response.raise_for_status()
+            payload = response.json()
+            if payload.get("ok"):
+                url = payload.get("result", {}).get("url")
+                if url:
+                    self._telegram_webhook_url = url
+        except Exception as exc:
+            logger.debug("Failed to check Telegram webhook: %s", exc)
+        return self._telegram_webhook_url
 
     def _resolve_debug_config(self, override: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         base = self.config.get("debug", {})
@@ -1632,10 +1673,11 @@ class DailyDigestService:
         telegram_reply_markup = None
         telegram_session_id = None
         session_store = self._get_session_store()
-        interactive_cfg = telegram_cfg.get("interactive", {}) if telegram_cfg else {}
-        if session_store and isinstance(interactive_cfg, dict):
-            max_items = int(interactive_cfg.get("max_items", 40))
-            page_size = int(interactive_cfg.get("page_size", 8))
+        if session_store:
+            max_items_env = os.getenv("TELEGRAM_MAX_ITEMS")
+            page_size_env = os.getenv("TELEGRAM_PAGE_SIZE")
+            max_items = int(max_items_env) if max_items_env else DEFAULT_TELEGRAM_MAX_ITEMS
+            page_size = int(page_size_env) if page_size_env else DEFAULT_TELEGRAM_PAGE_SIZE
             items = self._build_telegram_interactive_items(emails, max_items=max_items)
             if items:
                 session_store.cleanup()

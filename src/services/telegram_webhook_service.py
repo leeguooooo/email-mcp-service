@@ -6,6 +6,7 @@ from __future__ import annotations
 import html as html_lib
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -18,6 +19,11 @@ from .email_service import EmailService
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_TELEGRAM_SESSION_PATH = "data/telegram_sessions.json"
+DEFAULT_TELEGRAM_SESSION_TTL_HOURS = 48
+DEFAULT_DETAIL_MAX_CHARS = 2000
+DEFAULT_AI_SUMMARY_MAX_CHARS = 1200
+
 
 class TelegramWebhookService:
     def __init__(
@@ -27,13 +33,15 @@ class TelegramWebhookService:
         self.digest_service = DailyDigestService(config_path=config_path)
         self.config = self.digest_service.config
         self.telegram_cfg = self.config.get("telegram", {})
-        self.interactive_cfg = self.telegram_cfg.get("interactive", {}) if self.telegram_cfg else {}
-        self.webhook_cfg = self.telegram_cfg.get("webhook", {}) if self.telegram_cfg else {}
         self.bot_token = self.telegram_cfg.get("bot_token")
         self.api_base = self.telegram_cfg.get("api_base", "https://api.telegram.org").rstrip("/")
         self.session_store = self._init_session_store()
         self.account_manager = AccountManager()
         self.email_service = EmailService(self.account_manager)
+        detail_env = os.getenv("TELEGRAM_DETAIL_MAX_CHARS")
+        summary_env = os.getenv("TELEGRAM_AI_SUMMARY_MAX_CHARS")
+        self.detail_max_chars = int(detail_env) if detail_env else DEFAULT_DETAIL_MAX_CHARS
+        self.ai_summary_max_chars = int(summary_env) if summary_env else DEFAULT_AI_SUMMARY_MAX_CHARS
 
     def _resolve_repo_path(self, path_str: str) -> str:
         path = Path(path_str)
@@ -43,10 +51,9 @@ class TelegramWebhookService:
         return str((repo_root / path).resolve())
 
     def _init_session_store(self) -> Optional[TelegramSessionStore]:
-        if not isinstance(self.interactive_cfg, dict):
-            return None
-        session_path = self.interactive_cfg.get("session_path") or "data/telegram_sessions.json"
-        ttl_hours = int(self.interactive_cfg.get("session_ttl_hours", 48))
+        session_path = os.getenv("TELEGRAM_SESSION_PATH", DEFAULT_TELEGRAM_SESSION_PATH)
+        ttl_env = os.getenv("TELEGRAM_SESSION_TTL_HOURS")
+        ttl_hours = int(ttl_env) if ttl_env else DEFAULT_TELEGRAM_SESSION_TTL_HOURS
         resolved_path = self._resolve_repo_path(session_path)
         return TelegramSessionStore(resolved_path, ttl_hours=ttl_hours)
 
@@ -171,17 +178,15 @@ class TelegramWebhookService:
             return
 
         raw_text = self.digest_service.extract_email_text(detail)
-        ai_max_chars = int(self.interactive_cfg.get("ai_summary_max_chars", 1200))
         summary = self.digest_service.summarize_single_email(
             subject=detail.get("subject", ""),
             sender=detail.get("from", ""),
             date_str=detail.get("date", ""),
             account=detail.get("account") or detail.get("account_id") or "",
             content=raw_text,
-            max_chars=ai_max_chars
+            max_chars=self.ai_summary_max_chars
         )
-        detail_max_chars = int(self.interactive_cfg.get("detail_max_chars", 2000))
-        message = self._build_detail_message(detail, summary, raw_text, detail_max_chars)
+        message = self._build_detail_message(detail, summary, raw_text, self.detail_max_chars)
         chat_id = callback.get("message", {}).get("chat", {}).get("id")
         if chat_id is not None:
             self._send_message(chat_id, message, "HTML")

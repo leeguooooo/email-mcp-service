@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -13,8 +14,8 @@ from pathlib import Path
 repo_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(repo_root))
 
-from src.config.digest_config import DigestConfigManager
 from src.services.telegram_webhook_service import TelegramWebhookService
+import requests
 
 
 class TelegramWebhookHandler(BaseHTTPRequestHandler):
@@ -63,20 +64,35 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--port", type=int, help="Override webhook port")
     parser.add_argument("--path", help="Override webhook path")
     parser.add_argument("--secret-token", help="Override webhook secret token")
+    parser.add_argument("--public-url", help="Public HTTPS URL for Telegram webhook")
     return parser.parse_args()
+
+
+def _set_webhook(
+    service: TelegramWebhookService,
+    public_url: str,
+    secret_token: str | None
+) -> None:
+    if not service.bot_token:
+        raise ValueError("Missing Telegram bot_token in config")
+    payload = {"url": public_url}
+    if secret_token:
+        payload["secret_token"] = secret_token
+    response = requests.post(
+        f"{service.api_base}/bot{service.bot_token}/setWebhook",
+        json=payload,
+        timeout=10
+    )
+    response.raise_for_status()
 
 
 def main() -> None:
     args = _parse_args()
-    cfg_manager = DigestConfigManager(args.config)
-    cfg = cfg_manager.config
-    telegram_cfg = cfg.get("telegram", {})
-    webhook_cfg = telegram_cfg.get("webhook", {}) if telegram_cfg else {}
-
-    host = args.host or webhook_cfg.get("host", "0.0.0.0")
-    port = int(args.port or webhook_cfg.get("port", 8090))
-    path = args.path or webhook_cfg.get("path", "/telegram/webhook")
-    secret_token = args.secret_token or webhook_cfg.get("secret_token")
+    host = args.host or os.getenv("TELEGRAM_WEBHOOK_HOST", "0.0.0.0")
+    port = int(args.port or os.getenv("TELEGRAM_WEBHOOK_PORT", "8090"))
+    path = args.path or os.getenv("TELEGRAM_WEBHOOK_PATH", "/telegram/webhook")
+    secret_token = args.secret_token or os.getenv("TELEGRAM_WEBHOOK_SECRET")
+    public_url = args.public_url or os.getenv("TELEGRAM_WEBHOOK_URL")
 
     service = TelegramWebhookService(args.config)
     server = ThreadingHTTPServer((host, port), TelegramWebhookHandler)
@@ -84,11 +100,15 @@ def main() -> None:
     server.webhook_path = path
     server.secret_token = secret_token
 
+    if public_url:
+        _set_webhook(service, public_url, secret_token)
+
     print(json.dumps({
         "message": "Telegram webhook server started",
         "host": host,
         "port": port,
-        "path": path
+        "path": path,
+        "webhook_url": public_url
     }, ensure_ascii=False))
     server.serve_forever()
 
