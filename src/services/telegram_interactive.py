@@ -138,19 +138,36 @@ def build_menu_text(
         lines.append("<b>详情索引</b>（点下方按钮查看）")
     else:
         lines.append("详情索引（点下方按钮查看）")
+    max_subject_len = 60
     for idx in range(start, end):
         item = items[idx]
         subject = (item.get("subject") or "").strip() or "(无主题)"
-        sender = (item.get("from") or "").strip() or "unknown"
+        if len(subject) > max_subject_len:
+            subject = subject[: max_subject_len - 3] + "..."
+        sender = (item.get("from") or "").strip()
+        account = (item.get("account_id") or "").strip()
         prefix = f"{idx + 1}."
         if mode == "html":
-            lines.append(f"{prefix} {_escape(subject)} — {_escape(sender)}")
+            if account:
+                suffix = f"<code>{_escape(account)}</code>"
+            elif sender:
+                suffix = _escape(sender)
+            else:
+                suffix = ""
+            line = f"{prefix} {_escape(subject)}"
+            if suffix:
+                line = f"{line} — {suffix}"
+            lines.append(line)
         else:
-            lines.append(f"{prefix} {subject} — {sender}")
+            suffix = account or sender
+            if suffix:
+                lines.append(f"{prefix} {subject} — {suffix}")
+            else:
+                lines.append(f"{prefix} {subject}")
 
     footer = f"页码: {page}/{total_pages}"
     lines.append(footer)
-    separator = "\n" if base_text else ""
+    separator = "\n\n" if base_text else ""
     combined = f"{base_text}{separator}" + "\n".join(lines)
     if len(combined) > max_len:
         notice = "日报内容过长，已折叠。"

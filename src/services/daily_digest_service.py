@@ -633,9 +633,15 @@ class DailyDigestService:
             base_url=cfg.get("base_url")
         )
 
+        telegram_cfg = self.config.get("telegram", {})
+        title = (telegram_cfg.get("title") or "邮件日报").strip()
+        if title.lower() == "daily email digest":
+            title = "邮件日报"
+
         max_emails = int(cfg.get("max_emails", 40))
         if max_emails <= 0:
             max_emails = min(40, len(emails))
+        max_emails = min(max_emails, 25)
         sampled = emails[:max_emails]
 
         email_lines = []
@@ -644,10 +650,12 @@ class DailyDigestService:
             sender = email.get("from", "")
             date_str = email.get("date", "")
             account = email.get("account") or email.get("account_id") or ""
-            preview = self._get_preview(email, max_len=160)
+            preview = self._get_preview(email, max_len=80)
             if not (subject or sender or date_str or preview):
                 continue
-            email_lines.append(f"- {subject} | {sender} | {account} | {date_str} | {preview}")
+            email_lines.append(
+                f"- 主题: {subject} | 发件人: {sender} | 账号: {account} | 时间: {date_str} | 预览: {preview}"
+            )
 
         highlight_lines = []
         for email in highlights:
@@ -655,43 +663,73 @@ class DailyDigestService:
             sender = email.get("from", "")
             date_str = email.get("date", "")
             account = email.get("account") or email.get("account_id") or ""
-            preview = self._get_preview(email, max_len=120)
+            preview = self._get_preview(email, max_len=100)
             if not (subject or sender or date_str or preview):
                 continue
-            highlight_lines.append(f"- {subject} | {sender} | {account} | {date_str} | {preview}")
+            highlight_lines.append(
+                f"- 主题: {subject} | 发件人: {sender} | 账号: {account} | 时间: {date_str} | 预览: {preview}"
+            )
 
-        account_lines = []
+        account_parts = []
         for item in account_stats:
             account = item.get("account", "unknown")
             total = item.get("total_found")
             displayed_count = item.get("displayed", 0)
-            if total is None:
-                account_lines.append(f"- {account}: {displayed_count}")
+            if total is not None and total != displayed_count:
+                account_parts.append(f"{account} {displayed_count}/{total}")
             else:
-                account_lines.append(f"- {account}: {displayed_count}/{total}")
+                account_parts.append(f"{account} {displayed_count}")
 
-        category_summary = ", ".join(f"{name}: {count}" for name, count in category_counts.items())
+        account_summary = "；".join(account_parts) if account_parts else "无"
+
+        sorted_categories = sorted(category_counts.items(), key=lambda kv: kv[1], reverse=True)
+        if sorted_categories:
+            top_categories = sorted_categories[:6]
+            rest_categories = sorted_categories[6:]
+            category_parts = [f"{name} {count}" for name, count in top_categories]
+            if rest_categories:
+                rest_count = sum(count for _, count in rest_categories)
+                if rest_count:
+                    category_parts.append(f"其他 {rest_count}")
+            category_summary = " / ".join(category_parts)
+        else:
+            category_summary = "无"
         failed_names = ", ".join(item.get("account", "unknown") for item in failed_accounts)
+
+        if format_label == "HTML":
+            title_line = f"<b>{title}</b>（{date_label}）"
+            overview_header = "<b>概览</b>"
+            highlight_header = "<b>重点</b>"
+        elif format_label == "MarkdownV2":
+            title_line = f"**{title}**（{date_label}）"
+            overview_header = "**概览**"
+            highlight_header = "**重点**"
+        else:
+            title_line = f"{title}（{date_label}）"
+            overview_header = "概览"
+            highlight_header = "重点"
 
         prompt = (
             "你是邮件日报写手，请基于以下数据生成一条 Telegram 日报消息。\n"
             f"格式要求: {format_label}. {format_hint}\n"
             "写作要求:\n"
-            "- 风格像日报：简洁、结构清晰、有重点。\n"
-            "- 必须包含账号来源信息（账号概况或重点邮件内）。\n"
-            "- 重点邮件最多 6 条；若无行动清单则不输出行动清单。\n"
+            "- 风格像日报：短句、分行、结构固定。\n"
+            "- 必须包含账号来源与分类汇总。\n"
+            "- 重点最多 5 条，每条格式：序号 + 标题（分类）｜账号｜一句话摘要。\n"
+            "- 若有行动清单才输出待办部分，否则不要输出。\n"
+            "- 不要输出“详情索引/页码/按钮”等字样。\n"
             "- 不要杜撰未提供的信息。\n"
             "- 仅输出消息正文，不要额外解释。\n\n"
-            f"时间范围: {date_label}\n"
-            f"总数: {total_found} (显示 {displayed})\n"
-            f"重要: {important_count}\n"
-            f"缺失详情: {missing_details}\n"
-            f"被截断: {truncated}\n"
-            f"失败账号: {failed_names or '无'}\n"
-            f"分类分布: {category_summary}\n"
-            "账号概况:\n"
-            + "\n".join(account_lines)
-            + "\n\n重点邮件:\n"
+            "输出结构（按顺序）：\n"
+            f"{title_line}\n"
+            f"{overview_header}\n"
+            f"- 总数: {total_found}（显示 {displayed}）\n"
+            f"- 重要: {important_count}\n"
+            f"- 账号: {account_summary}\n"
+            f"- 分类: {category_summary}\n"
+            + (f"- 失败账号: {failed_names}\n" if failed_names else "")
+            + f"{highlight_header}\n\n"
+            "重点邮件:\n"
             + ("\n".join(highlight_lines) if highlight_lines else "(无)")
             + "\n\n邮件样本:\n"
             + ("\n".join(email_lines) if email_lines else "(无)")
