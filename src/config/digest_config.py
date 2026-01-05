@@ -80,6 +80,8 @@ class DigestConfigManager:
             "chat_id": "",
             "api_base": "https://api.telegram.org",
             "parse_mode": "HTML",
+            "webhook_url": None,
+            "webhook_secret": None,
             "title": "Daily Email Digest",
             "max_highlights": 10
         }

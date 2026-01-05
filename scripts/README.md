@@ -173,7 +173,10 @@ python scripts/telegram_webhook_server.py
 python scripts/telegram_webhook_server.py --public-url https://your.domain/telegram/webhook
 ```
 
-**配置**: `data/daily_digest_config.json` 只需填 `telegram.bot_token` 和 `telegram.chat_id`
+**配置**: `data/daily_digest_config.json` 只需填：
+- `telegram.bot_token`
+- `telegram.chat_id`
+- `telegram.webhook_url`（如 https://your.domain/telegram/webhook）
 
 **说明**: 需要在 Telegram 设置 Webhook（指向你公网可访问的 HTTPS 地址），可用上面的 `--public-url` 自动设置。
 

@@ -61,6 +61,8 @@
     "chat_id": "123456789",
     "api_base": "https://api.telegram.org",
     "parse_mode": "HTML",
+    "webhook_url": "https://your.domain/telegram/webhook",
+    "webhook_secret": null,
     "title": "Daily Email Digest",
     "max_highlights": 10
   }

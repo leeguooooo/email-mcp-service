@@ -8,12 +8,14 @@ import argparse
 import json
 import os
 import sys
+from urllib.parse import urlparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 repo_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(repo_root))
 
+from src.config.digest_config import DigestConfigManager
 from src.services.telegram_webhook_service import TelegramWebhookService
 import requests
 
@@ -88,11 +90,21 @@ def _set_webhook(
 
 def main() -> None:
     args = _parse_args()
+    cfg_manager = DigestConfigManager(args.config)
+    cfg = cfg_manager.config
+    telegram_cfg = cfg.get("telegram", {})
+    config_webhook_url = telegram_cfg.get("webhook_url")
+    config_secret = telegram_cfg.get("webhook_secret")
+
     host = args.host or os.getenv("TELEGRAM_WEBHOOK_HOST", "0.0.0.0")
     port = int(args.port or os.getenv("TELEGRAM_WEBHOOK_PORT", "9142"))
-    path = args.path or os.getenv("TELEGRAM_WEBHOOK_PATH", "/telegram/webhook")
-    secret_token = args.secret_token or os.getenv("TELEGRAM_WEBHOOK_SECRET")
-    public_url = args.public_url or os.getenv("TELEGRAM_WEBHOOK_URL")
+    path = args.path or os.getenv("TELEGRAM_WEBHOOK_PATH")
+    public_url = args.public_url or os.getenv("TELEGRAM_WEBHOOK_URL") or config_webhook_url
+    secret_token = args.secret_token or os.getenv("TELEGRAM_WEBHOOK_SECRET") or config_secret
+
+    if not path:
+        parsed = urlparse(public_url or "")
+        path = parsed.path or "/telegram/webhook"
 
     service = TelegramWebhookService(args.config)
     server = ThreadingHTTPServer((host, port), TelegramWebhookHandler)

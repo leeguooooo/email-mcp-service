@@ -83,7 +83,7 @@ class DailyDigestService:
             return True
         if env_value in {"0", "false", "no", "off"}:
             return False
-        webhook_url = self._get_telegram_webhook_url()
+        webhook_url = telegram_cfg.get("webhook_url") or self._get_telegram_webhook_url()
         return bool(webhook_url)
 
     def _get_telegram_webhook_url(self) -> Optional[str]:
@@ -94,6 +94,10 @@ class DailyDigestService:
         bot_token = telegram_cfg.get("bot_token")
         if not bot_token:
             return None
+        configured = telegram_cfg.get("webhook_url")
+        if configured:
+            self._telegram_webhook_url = configured
+            return configured
         api_base = telegram_cfg.get("api_base", "https://api.telegram.org").rstrip("/")
         try:
             response = requests.post(
