@@ -54,7 +54,7 @@
     "bot_token": "123456:ABC-DEF",
     "chat_id": "123456789",
     "api_base": "https://api.telegram.org",
-    "parse_mode": null,
+    "parse_mode": "HTML",
     "title": "Daily Email Digest",
     "max_highlights": 10
   }

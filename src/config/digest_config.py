@@ -73,7 +73,7 @@ class DigestConfigManager:
             "bot_token": "",
             "chat_id": "",
             "api_base": "https://api.telegram.org",
-            "parse_mode": None,
+            "parse_mode": "HTML",
             "title": "Daily Email Digest",
             "max_highlights": 10
         }

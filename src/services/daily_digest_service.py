@@ -417,6 +417,139 @@ class DailyDigestService:
         )
         return response.choices[0].message.content.strip()
 
+    def _build_ai_telegram_message(
+        self,
+        emails: List[Dict[str, Any]],
+        parse_mode: Optional[str],
+        date_label: str,
+        total_found: int,
+        displayed: int,
+        important_count: int,
+        category_counts: Dict[str, int],
+        highlights: List[Dict[str, Any]],
+        account_stats: List[Dict[str, Any]],
+        failed_accounts: List[Dict[str, Any]],
+        truncated: bool,
+        missing_details: int
+    ) -> Optional[Tuple[str, Optional[str]]]:
+        cfg = self.config.get("summary_ai", {})
+        if not cfg.get("enabled", True):
+            return None
+
+        api_key = cfg.get("api_key") or os.getenv(cfg.get("api_key_env", "OPENAI_API_KEY"))
+        if not api_key:
+            logger.warning("OpenAI API key not found; skipping AI Telegram message")
+            return None
+
+        try:
+            import openai
+        except ImportError:
+            logger.warning("OpenAI library not installed; skipping AI Telegram message")
+            return None
+
+        normalized = (parse_mode or "").strip()
+        if not normalized:
+            normalized = "HTML"
+        if normalized.lower() == "html":
+            format_label = "HTML"
+            format_hint = (
+                "输出 HTML，允许标签: <b>, <i>, <code>, <pre>, <a href=\"url\">。"
+                "不要使用其他标签，不要用 Markdown，不要用代码块。"
+            )
+        elif normalized.lower() in {"markdownv2", "markdown"}:
+            format_label = "MarkdownV2"
+            format_hint = (
+                "输出 MarkdownV2（注意转义特殊字符），不要使用 HTML 标签，不要用代码块。"
+            )
+            normalized = "MarkdownV2"
+        else:
+            format_label = "PlainText"
+            format_hint = "输出纯文本，不要使用 HTML/Markdown。"
+            normalized = None
+
+        client = openai.OpenAI(
+            api_key=api_key,
+            base_url=cfg.get("base_url")
+        )
+
+        max_emails = int(cfg.get("max_emails", 40))
+        if max_emails <= 0:
+            max_emails = min(40, len(emails))
+        sampled = emails[:max_emails]
+
+        email_lines = []
+        for email in sampled:
+            subject = email.get("subject", "")
+            sender = email.get("from", "")
+            date_str = email.get("date", "")
+            account = email.get("account") or email.get("account_id") or ""
+            preview = self._get_preview(email, max_len=160)
+            if not (subject or sender or date_str or preview):
+                continue
+            email_lines.append(f"- {subject} | {sender} | {account} | {date_str} | {preview}")
+
+        highlight_lines = []
+        for email in highlights:
+            subject = email.get("subject", "")
+            sender = email.get("from", "")
+            date_str = email.get("date", "")
+            account = email.get("account") or email.get("account_id") or ""
+            preview = self._get_preview(email, max_len=120)
+            if not (subject or sender or date_str or preview):
+                continue
+            highlight_lines.append(f"- {subject} | {sender} | {account} | {date_str} | {preview}")
+
+        account_lines = []
+        for item in account_stats:
+            account = item.get("account", "unknown")
+            total = item.get("total_found")
+            displayed_count = item.get("displayed", 0)
+            if total is None:
+                account_lines.append(f"- {account}: {displayed_count}")
+            else:
+                account_lines.append(f"- {account}: {displayed_count}/{total}")
+
+        category_summary = ", ".join(f"{name}: {count}" for name, count in category_counts.items())
+        failed_names = ", ".join(item.get("account", "unknown") for item in failed_accounts)
+
+        prompt = (
+            "你是邮件日报写手，请基于以下数据生成一条 Telegram 日报消息。\n"
+            f"格式要求: {format_label}. {format_hint}\n"
+            "写作要求:\n"
+            "- 风格像日报：简洁、结构清晰、有重点。\n"
+            "- 必须包含账号来源信息（账号概况或重点邮件内）。\n"
+            "- 重点邮件最多 6 条；若无行动清单则不输出行动清单。\n"
+            "- 不要杜撰未提供的信息。\n"
+            "- 仅输出消息正文，不要额外解释。\n\n"
+            f"时间范围: {date_label}\n"
+            f"总数: {total_found} (显示 {displayed})\n"
+            f"重要: {important_count}\n"
+            f"缺失详情: {missing_details}\n"
+            f"被截断: {truncated}\n"
+            f"失败账号: {failed_names or '无'}\n"
+            f"分类分布: {category_summary}\n"
+            "账号概况:\n"
+            + "\n".join(account_lines)
+            + "\n\n重点邮件:\n"
+            + ("\n".join(highlight_lines) if highlight_lines else "(无)")
+            + "\n\n邮件样本:\n"
+            + ("\n".join(email_lines) if email_lines else "(无)")
+        )
+
+        response = client.chat.completions.create(
+            model=cfg.get("model", "gpt-3.5-turbo"),
+            messages=[
+                {"role": "system", "content": "你是一个严谨的日报生成器。"},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2,
+            max_tokens=600
+        )
+        content = response.choices[0].message.content.strip()
+        if not content:
+            return None
+        return content, normalized
+
     def _build_fallback_summary(
         self,
         total_found: int,
@@ -501,6 +634,54 @@ class DailyDigestService:
 
     def _strip_markdown(self, text: str) -> str:
         return text.replace("**", "").replace("`", "")
+
+    def _split_summary_sections(self, summary_text: str) -> Tuple[List[str], List[str]]:
+        if not summary_text:
+            return [], []
+        cleaned = self._strip_markdown(summary_text)
+        lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+        action_idx = None
+        for idx, line in enumerate(lines):
+            if re.search(r"(行动清单|行动建议|Action\s*List|Actions?)", line, re.IGNORECASE):
+                action_idx = idx
+                break
+
+        if action_idx is not None:
+            summary_lines = lines[:action_idx]
+            action_lines = lines[action_idx + 1:]
+        else:
+            summary_lines = lines
+            action_lines = []
+
+        def strip_bullet(text: str) -> str:
+            text = re.sub(r"^[-*•]\s+", "", text)
+            text = re.sub(r"^\d+[\.\、]\s+", "", text)
+            return text.strip()
+
+        summary = []
+        for line in summary_lines:
+            if re.search(r"(行动清单|行动建议|Action\s*List|Actions?)", line, re.IGNORECASE):
+                continue
+            line = strip_bullet(line)
+            if line:
+                summary.append(line)
+
+        actions = []
+        for line in action_lines:
+            line = strip_bullet(line)
+            if line:
+                actions.append(line)
+
+        return summary, actions
+
+    def _escape_telegram_html(self, text: str) -> str:
+        return html.escape(text or "")
+
+    def _escape_markdown_v2(self, text: str) -> str:
+        if not text:
+            return ""
+        escaped = text.replace("\\", "\\\\")
+        return re.sub(r"([_\*\[\]\(\)~`>#+\-=|{}\.!])", r"\\\1", escaped)
 
     def _strip_html(self, text: str) -> str:
         if not text:
@@ -714,17 +895,18 @@ class DailyDigestService:
 
         lines = [
             title,
-            f"Date: {date_label}",
-            f"Total: {total_found} (shown {displayed}) | Important: {important_count}",
-            ""
+            f"时间: {date_label}",
+            f"总数: {total_found} (显示 {displayed}) | 重要: {important_count}"
         ]
 
         if summary_text:
-            lines.append(summary_text)
             lines.append("")
+            lines.append("摘要:")
+            lines.append(summary_text)
 
         if account_stats:
-            lines.append("Accounts:")
+            lines.append("")
+            lines.append("账号:")
             for item in account_stats:
                 account = item.get("account", "unknown")
                 total = item.get("total_found")
@@ -733,39 +915,247 @@ class DailyDigestService:
                     lines.append(f"- {account}: {displayed_count}")
                 else:
                     lines.append(f"- {account}: {displayed_count}/{total}")
-            lines.append("")
 
-        lines.append("Categories:")
+        if highlights:
+            lines.append("")
+            lines.append("重点邮件:")
+            for email in highlights:
+                subject = email.get("subject") or "(无主题)"
+                sender = email.get("from") or "unknown"
+                date_str = email.get("date") or ""
+                account = email.get("account") or email.get("account_id") or "unknown"
+                meta_parts = [part for part in (sender, account, date_str) if part]
+                lines.append(f"- {subject}")
+                if meta_parts:
+                    lines.append("  " + " | ".join(meta_parts))
+
+        lines.append("")
+        lines.append("分类:")
         if category_counts:
             for name, count in category_counts.items():
                 lines.append(f"- {name}: {count}")
         else:
             lines.append("- general: 0")
 
-        if highlights:
-            lines.append("")
-            lines.append("Highlights:")
-            for email in highlights:
-                subject = email.get("subject", "")
-                sender = email.get("from", "")
-                date_str = email.get("date", "")
-                account = email.get("account") or email.get("account_id") or "unknown"
-                lines.append(f"- {subject} | {sender} | {account} | {date_str}")
-
         if truncated or failed_accounts or missing_details:
             lines.append("")
-            lines.append("Notes:")
+            lines.append("备注:")
             if truncated:
-                lines.append("- Digest shows only a subset (limit applied).")
+                lines.append("- 仅展示部分邮件（命中展示上限）。")
             if failed_accounts:
                 failed_names = ", ".join(
                     item.get("account", "unknown") for item in failed_accounts
                 )
-                lines.append(f"- Failed accounts: {failed_names}")
+                lines.append(f"- 失败账号: {failed_names}")
             if missing_details:
-                lines.append(f"- Missing details: {missing_details}")
+                lines.append(f"- 缺失详情: {missing_details}")
 
         return self._truncate_text("\n".join(lines).strip(), 4000)
+
+    def _build_telegram_html(
+        self,
+        date_label: str,
+        displayed: int,
+        total_found: int,
+        important_count: int,
+        summary_text: str,
+        category_counts: Dict[str, int],
+        highlights: List[Dict[str, Any]],
+        account_stats: List[Dict[str, Any]],
+        failed_accounts: List[Dict[str, Any]],
+        truncated: bool,
+        missing_details: int
+    ) -> str:
+        title = self.config.get("telegram", {}).get(
+            "title",
+            self.config.get("lark", {}).get("title", "Daily Email Digest")
+        )
+        summary_points, action_points = self._split_summary_sections(summary_text)
+        esc = self._escape_telegram_html
+
+        lines = [
+            f"<b>{esc(title)}</b>",
+            f"时间: {esc(date_label)}",
+            f"总数: {total_found} (显示 {displayed}) | 重要: {important_count}"
+        ]
+
+        if summary_points:
+            lines.append("")
+            lines.append("<b>今日要点</b>")
+            for line in summary_points[:5]:
+                lines.append(f"• {esc(line)}")
+
+        if account_stats:
+            lines.append("")
+            lines.append("<b>账号概况</b>")
+            for item in account_stats:
+                account = esc(item.get("account", "unknown"))
+                total = item.get("total_found")
+                displayed_count = item.get("displayed", 0)
+                if total is None:
+                    lines.append(f"• {account}: {displayed_count}")
+                else:
+                    lines.append(f"• {account}: {displayed_count}/{total}")
+
+        if highlights:
+            lines.append("")
+            lines.append("<b>重点邮件</b>")
+            for email in highlights:
+                subject = esc(email.get("subject") or "(无主题)")
+                sender = email.get("from") or "unknown"
+                account = email.get("account") or email.get("account_id") or "unknown"
+                date_str = email.get("date") or ""
+                meta_parts = [
+                    esc(part) for part in (sender, account, date_str) if part
+                ]
+                lines.append(f"• {subject}")
+                if meta_parts:
+                    lines.append(f"  <i>{' | '.join(meta_parts)}</i>")
+
+        if action_points:
+            lines.append("")
+            lines.append("<b>行动清单</b>")
+            for line in action_points[:5]:
+                lines.append(f"• {esc(line)}")
+
+        lines.append("")
+        lines.append("<b>分类分布</b>")
+        if category_counts:
+            for name, count in category_counts.items():
+                lines.append(f"• {esc(name)}: {count}")
+        else:
+            lines.append("• general: 0")
+
+        if truncated or failed_accounts or missing_details:
+            lines.append("")
+            lines.append("<b>备注</b>")
+            if truncated:
+                lines.append("• 仅展示部分邮件（命中展示上限）。")
+            if failed_accounts:
+                failed_names = ", ".join(
+                    item.get("account", "unknown") for item in failed_accounts
+                )
+                lines.append(f"• 失败账号: {esc(failed_names)}")
+            if missing_details:
+                lines.append(f"• 缺失详情: {missing_details}")
+
+        return self._truncate_text("\n".join(lines).strip(), 4000)
+
+    def _build_telegram_markdown_v2(
+        self,
+        date_label: str,
+        displayed: int,
+        total_found: int,
+        important_count: int,
+        summary_text: str,
+        category_counts: Dict[str, int],
+        highlights: List[Dict[str, Any]],
+        account_stats: List[Dict[str, Any]],
+        failed_accounts: List[Dict[str, Any]],
+        truncated: bool,
+        missing_details: int
+    ) -> str:
+        text = self._build_telegram_text(
+            date_label=date_label,
+            displayed=displayed,
+            total_found=total_found,
+            important_count=important_count,
+            summary_text=summary_text,
+            category_counts=category_counts,
+            highlights=highlights,
+            account_stats=account_stats,
+            failed_accounts=failed_accounts,
+            truncated=truncated,
+            missing_details=missing_details
+        )
+        return self._escape_markdown_v2(text)
+
+    def _build_telegram_message(
+        self,
+        parse_mode: Optional[str],
+        date_label: str,
+        displayed: int,
+        total_found: int,
+        important_count: int,
+        summary_text: str,
+        category_counts: Dict[str, int],
+        highlights: List[Dict[str, Any]],
+        account_stats: List[Dict[str, Any]],
+        failed_accounts: List[Dict[str, Any]],
+        truncated: bool,
+        missing_details: int,
+        emails: List[Dict[str, Any]]
+    ) -> Tuple[str, Optional[str]]:
+        ai_message = self._build_ai_telegram_message(
+            emails=emails,
+            parse_mode=parse_mode,
+            date_label=date_label,
+            total_found=total_found,
+            displayed=displayed,
+            important_count=important_count,
+            category_counts=category_counts,
+            highlights=highlights,
+            account_stats=account_stats,
+            failed_accounts=failed_accounts,
+            truncated=truncated,
+            missing_details=missing_details
+        )
+        if ai_message is not None:
+            return ai_message
+
+        normalized = (parse_mode or "").strip()
+        if not normalized:
+            normalized = "HTML"
+        if normalized.lower() == "html":
+            return (
+                self._build_telegram_html(
+                    date_label=date_label,
+                    displayed=displayed,
+                    total_found=total_found,
+                    important_count=important_count,
+                    summary_text=summary_text,
+                    category_counts=category_counts,
+                    highlights=highlights,
+                    account_stats=account_stats,
+                    failed_accounts=failed_accounts,
+                    truncated=truncated,
+                    missing_details=missing_details
+                ),
+                "HTML"
+            )
+        if normalized.lower() in {"markdownv2", "markdown"}:
+            return (
+                self._build_telegram_markdown_v2(
+                    date_label=date_label,
+                    displayed=displayed,
+                    total_found=total_found,
+                    important_count=important_count,
+                    summary_text=summary_text,
+                    category_counts=category_counts,
+                    highlights=highlights,
+                    account_stats=account_stats,
+                    failed_accounts=failed_accounts,
+                    truncated=truncated,
+                    missing_details=missing_details
+                ),
+                "MarkdownV2"
+            )
+        return (
+            self._build_telegram_text(
+                date_label=date_label,
+                displayed=displayed,
+                total_found=total_found,
+                important_count=important_count,
+                summary_text=summary_text,
+                category_counts=category_counts,
+                highlights=highlights,
+                account_stats=account_stats,
+                failed_accounts=failed_accounts,
+                truncated=truncated,
+                missing_details=missing_details
+            ),
+            None
+        )
 
     def _build_lark_elements(
         self,
@@ -898,7 +1288,11 @@ class DailyDigestService:
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
-    def _send_telegram_notification(self, text: str) -> Dict[str, Any]:
+    def _send_telegram_notification(
+        self,
+        text: str,
+        parse_mode: Optional[str] = None
+    ) -> Dict[str, Any]:
         telegram_cfg = self.config.get("telegram", {})
         bot_token = telegram_cfg.get("bot_token")
         chat_id = telegram_cfg.get("chat_id")
@@ -911,7 +1305,6 @@ class DailyDigestService:
             "text": text,
             "disable_web_page_preview": True
         }
-        parse_mode = telegram_cfg.get("parse_mode")
         if parse_mode:
             payload["parse_mode"] = parse_mode
 
@@ -987,7 +1380,8 @@ class DailyDigestService:
         telegram_cfg = self.config.get("telegram", {})
         telegram_max = int(telegram_cfg.get("max_highlights", 10))
         telegram_highlights = highlight_candidates[:telegram_max] if telegram_max > 0 else []
-        telegram_text = self._build_telegram_text(
+        telegram_text, telegram_parse_mode = self._build_telegram_message(
+            telegram_cfg.get("parse_mode"),
             date_label=date_label,
             displayed=displayed,
             total_found=total_found,
@@ -998,7 +1392,8 @@ class DailyDigestService:
             account_stats=account_stats,
             failed_accounts=failed_accounts,
             truncated=truncated,
-            missing_details=missing_details
+            missing_details=missing_details,
+            emails=emails
         )
 
         lark_result = None
@@ -1007,7 +1402,10 @@ class DailyDigestService:
 
         telegram_result = None
         if telegram_cfg.get("enabled", False):
-            telegram_result = self._send_telegram_notification(telegram_text)
+            telegram_result = self._send_telegram_notification(
+                telegram_text,
+                telegram_parse_mode
+            )
 
         return {
             "success": True,
