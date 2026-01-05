@@ -12,6 +12,7 @@ import quopri
 import re
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from email import utils as email_utils
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -36,6 +37,59 @@ class DailyDigestService:
         else:
             self.config_manager = DigestConfigManager(config_path or DIGEST_CONFIG_JSON)
         self.config = self.config_manager.config
+        self._debug_config: Dict[str, Any] = {}
+
+    def _resolve_debug_config(self, override: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        base = self.config.get("debug", {})
+        if not isinstance(base, dict):
+            base = {}
+        if not override:
+            return dict(base)
+        merged = dict(base)
+        merged.update(override)
+        return merged
+
+    def _debug_enabled(self, key: str) -> bool:
+        return bool(self._debug_config.get(key))
+
+    def _resolve_debug_path(self) -> Path:
+        override = self._debug_config.get("path")
+        if override:
+            return Path(override)
+        return self.config_manager.config_file.parent / "daily_digest_debug.jsonl"
+
+    def _write_debug_event(self, event: str, payload: Dict[str, Any]) -> None:
+        path = self._resolve_debug_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "ts": datetime.now().isoformat(),
+            "event": event,
+            **payload
+        }
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    def _debug_snapshot(
+        self,
+        emails: List[Dict[str, Any]],
+        max_len: int
+    ) -> List[Dict[str, Any]]:
+        snapshots = []
+        for email in emails:
+            preview = self._get_preview(email, max_len=max_len)
+            snapshots.append({
+                "id": email.get("id"),
+                "subject": email.get("subject"),
+                "from": email.get("from"),
+                "account": email.get("account") or email.get("account_id"),
+                "date": email.get("date"),
+                "preview_len": len(preview),
+                "preview": preview,
+                "body_len": len(email.get("body") or ""),
+                "html_len": len(email.get("html_body") or ""),
+                "has_html": bool(email.get("has_html"))
+            })
+        return snapshots
 
     def _last_24_hours_range(self) -> Tuple[str, str, datetime, datetime, str]:
         end_dt = datetime.now()
@@ -279,6 +333,15 @@ class DailyDigestService:
             f"Emails: {json.dumps(payload, ensure_ascii=False)}"
         )
 
+        if self._debug_enabled("dump_ai_input"):
+            debug_max = int(self._debug_config.get("max_preview_length", max_body_length))
+            self._write_debug_event("classification_input", {
+                "max_emails": max_emails,
+                "max_body_length": max_body_length,
+                "prompt": prompt,
+                "emails": self._debug_snapshot(target_emails, debug_max)
+            })
+
         client = openai.OpenAI(api_key=api_key, base_url=ai_cfg.get("base_url"))
         response = client.chat.completions.create(
             model=ai_cfg.get("model", "gpt-3.5-turbo"),
@@ -291,6 +354,10 @@ class DailyDigestService:
         )
 
         content = response.choices[0].message.content.strip()
+        if self._debug_enabled("dump_ai_output"):
+            self._write_debug_event("classification_output", {
+                "response": content
+            })
         parsed = self._parse_json_response(content)
         if parsed is None:
             raise ValueError("AI classification response is not valid JSON")
@@ -406,6 +473,14 @@ class DailyDigestService:
             f"Respond in {response_lang} using Markdown. Provide 3-5 bullet points and a short action list if needed."
         )
 
+        if self._debug_enabled("dump_ai_input"):
+            debug_max = int(self._debug_config.get("max_preview_length", 200))
+            self._write_debug_event("summary_input", {
+                "max_emails": max_emails,
+                "prompt": prompt,
+                "emails": self._debug_snapshot(sampled, debug_max)
+            })
+
         response = client.chat.completions.create(
             model=cfg.get("model", "gpt-3.5-turbo"),
             messages=[
@@ -415,7 +490,12 @@ class DailyDigestService:
             temperature=0.2,
             max_tokens=400
         )
-        return response.choices[0].message.content.strip()
+        content = response.choices[0].message.content.strip()
+        if self._debug_enabled("dump_ai_output"):
+            self._write_debug_event("summary_output", {
+                "response": content
+            })
+        return content
 
     def _build_ai_telegram_message(
         self,
@@ -536,6 +616,14 @@ class DailyDigestService:
             + ("\n".join(email_lines) if email_lines else "(无)")
         )
 
+        if self._debug_enabled("dump_ai_input"):
+            debug_max = int(self._debug_config.get("max_preview_length", 200))
+            self._write_debug_event("telegram_input", {
+                "format": format_label,
+                "prompt": prompt,
+                "emails": self._debug_snapshot(sampled, debug_max)
+            })
+
         response = client.chat.completions.create(
             model=cfg.get("model", "gpt-3.5-turbo"),
             messages=[
@@ -546,6 +634,10 @@ class DailyDigestService:
             max_tokens=600
         )
         content = response.choices[0].message.content.strip()
+        if self._debug_enabled("dump_ai_output"):
+            self._write_debug_event("telegram_output", {
+                "response": content
+            })
         if not content:
             return None
         return content, normalized
@@ -1319,7 +1411,12 @@ class DailyDigestService:
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
-    def run(self) -> Dict[str, Any]:
+    def run(
+        self,
+        dry_run: bool = False,
+        debug: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        self._debug_config = self._resolve_debug_config(debug)
         fetch_result = self._fetch_yesterday_emails()
         if not fetch_result.get("success"):
             return fetch_result
@@ -1397,15 +1494,15 @@ class DailyDigestService:
         )
 
         lark_result = None
-        if lark_cfg.get("enabled", True):
-            lark_result = self._send_lark_notification(payload)
-
         telegram_result = None
-        if telegram_cfg.get("enabled", False):
-            telegram_result = self._send_telegram_notification(
-                telegram_text,
-                telegram_parse_mode
-            )
+        if not dry_run:
+            if lark_cfg.get("enabled", True):
+                lark_result = self._send_lark_notification(payload)
+            if telegram_cfg.get("enabled", False):
+                telegram_result = self._send_telegram_notification(
+                    telegram_text,
+                    telegram_parse_mode
+                )
 
         return {
             "success": True,
@@ -1418,6 +1515,10 @@ class DailyDigestService:
             "truncated": truncated,
             "summary": summary_text,
             "missing_details": missing_details,
+            "dry_run": dry_run,
+            "debug_log": str(self._resolve_debug_path())
+            if self._debug_enabled("dump_ai_input") or self._debug_enabled("dump_ai_output")
+            else None,
             "lark_payload": payload,
             "telegram_message": telegram_text,
             "notification": lark_result,

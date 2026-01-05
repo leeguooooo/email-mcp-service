@@ -61,6 +61,12 @@ class DigestConfigManager:
             "language": "zh",
             "max_emails": 40
         },
+        "debug": {
+            "dump_ai_input": False,
+            "dump_ai_output": False,
+            "path": "data/daily_digest_debug.jsonl",
+            "max_preview_length": 400
+        },
         "lark": {
             "enabled": True,
             "webhook_url": "",

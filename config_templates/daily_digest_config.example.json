@@ -42,6 +42,12 @@
     "language": "zh",
     "max_emails": 40
   },
+  "debug": {
+    "dump_ai_input": false,
+    "dump_ai_output": false,
+    "path": "data/daily_digest_debug.jsonl",
+    "max_preview_length": 400
+  },
   "lark": {
     "enabled": true,
     "webhook_url": "https://open.larksuite.com/open-apis/bot/v2/hook/REPLACE_ME",
