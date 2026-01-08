@@ -80,19 +80,30 @@ class SearchOperations:
                     else:
                         # Handle unicode in search criteria
                         if any(ord(c) > 127 for c in str(search_criteria)):
-                            # Try UTF-8 charset for non-ASCII search
+                            # Try UTF-8 charset for non-ASCII search; send bytes to avoid ascii encoding errors.
+                            search_bytes = search_criteria.encode('utf-8')
                             try:
-                                result, data = mail.uid('search', 'UTF-8', search_criteria)
+                                result, data = mail.uid('search', 'UTF-8', search_bytes)
                             except Exception as e:
-                                logger.warning(f"UTF-8 charset search failed (expected for 163/QQ): {e}, trying without charset")
-                                # Encode the search string properly
-                                search_bytes = search_criteria.encode('utf-8')
+                                logger.warning(
+                                    f"UTF-8 charset search failed (expected for 163/QQ): {e}, trying without charset"
+                                )
                                 result, data = mail.uid('search', None, search_bytes)
                         else:
                             result, data = mail.uid('search', None, search_criteria)
                 except Exception as e:
                     logger.error(f"Search error: {e}")
-                    # Fallback to basic search if charset fails
+                    if query:
+                        return {
+                            'success': True,
+                            'emails': [],
+                            'total_found': 0,
+                            'search_criteria': str(search_criteria),
+                            'folder': folder,
+                            'account': self.connection_manager.email,
+                            'account_id': canonical_account_id
+                        }
+                    # Fallback to basic search if charset fails without query
                     result, data = mail.uid('search', None, 'ALL')
                 
                 if result != 'OK':

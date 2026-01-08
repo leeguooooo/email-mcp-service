@@ -135,17 +135,19 @@ def build_menu_text(
     lines = []
     mode = (parse_mode or "").lower()
     if mode == "html":
-        lines.append("<b>详情索引</b>（点下方按钮查看）")
+        lines.append("<b>全部邮件</b>")
+        lines.append("<i>回复数字或点按钮查看详情</i>")
     else:
-        lines.append("详情索引（点下方按钮查看）")
-    max_subject_len = 60
+        lines.append("全部邮件")
+        lines.append("回复数字或点按钮查看详情")
+    max_subject_len = 48
     for idx in range(start, end):
         item = items[idx]
-        subject = (item.get("subject") or "").strip() or "(无主题)"
+        subject = (item.get("subject_cn") or item.get("subject") or "").strip() or "(无主题)"
         if len(subject) > max_subject_len:
             subject = subject[: max_subject_len - 3] + "..."
         sender = (item.get("from") or "").strip()
-        account = (item.get("account_id") or "").strip()
+        account = (item.get("account") or item.get("account_id") or "").strip()
         prefix = f"{idx + 1}."
         if mode == "html":
             if account:
@@ -165,8 +167,9 @@ def build_menu_text(
             else:
                 lines.append(f"{prefix} {subject}")
 
-    footer = f"页码: {page}/{total_pages}"
-    lines.append(footer)
+    if total_pages > 1:
+        footer = f"页码: {page}/{total_pages}"
+        lines.append(footer)
     separator = "\n\n" if base_text else ""
     combined = f"{base_text}{separator}" + "\n".join(lines)
     if len(combined) > max_len:

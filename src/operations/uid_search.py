@@ -52,19 +52,20 @@ class UIDSearchEngine:
             # Handle UTF-8 search for non-ASCII characters
             try:
                 if any(ord(c) > 127 for c in str(search_criteria)):
-                    # Use UTF-8 charset for non-ASCII
+                    # Use UTF-8 charset for non-ASCII; ensure bytes to avoid ascii encoding errors.
+                    search_bytes = search_criteria.encode('utf-8')
                     try:
-                        status, data = self.connection.uid('SEARCH', 'UTF-8', search_criteria)
+                        status, data = self.connection.uid('SEARCH', 'UTF-8', search_bytes)
                     except Exception as e:
-                        logger.warning(f"UTF-8 charset search failed: {e}, trying with encoded bytes")
-                        # Encode the search criteria as UTF-8 bytes
-                        search_bytes = search_criteria.encode('utf-8')
+                        logger.warning(f"UTF-8 charset search failed: {e}, trying without charset")
                         status, data = self.connection.uid('SEARCH', None, search_bytes)
                 else:
                     status, data = self.connection.uid('SEARCH', None, search_criteria)
             except Exception as e:
-                logger.warning(f"UID search failed: {e}, trying fallback")
-                # Fallback to simple ALL search
+                logger.warning(f"UID search failed: {e}")
+                if query:
+                    return [], 0
+                # Fallback to simple ALL search only when no query is provided
                 status, data = self.connection.uid('SEARCH', None, 'ALL')
             
             if status != 'OK':
@@ -169,15 +170,8 @@ class UIDSearchEngine:
             elif search_in == "body":
                 criteria_parts.append(f'BODY "{encoded_query}"')
             else:  # all
-                # For non-ASCII text, use simpler TEXT search which is more compatible
-                if any(ord(c) > 127 for c in encoded_query):
-                    criteria_parts.append(f'TEXT "{encoded_query}"')
-                else:
-                    # Use nested OR for ASCII text only
-                    criteria_parts.append(
-                        f'OR (OR SUBJECT "{encoded_query}" FROM "{encoded_query}") '
-                        f'(OR TO "{encoded_query}" BODY "{encoded_query}")'
-                    )
+                # Use TEXT for better IMAP compatibility across providers
+                criteria_parts.append(f'TEXT "{encoded_query}"')
         
         # Join criteria
         if criteria_parts:

@@ -175,11 +175,49 @@ class DailyDigestService:
         label = f"{start_dt:%Y-%m-%d %H:%M} ~ {end_dt:%Y-%m-%d %H:%M}"
         return date_from, date_to, start_dt, end_dt, label
 
-    def _fetch_yesterday_emails(self) -> Dict[str, Any]:
+    def _resolve_range(
+        self,
+        range_key: Optional[str]
+    ) -> Tuple[str, str, datetime, datetime, str]:
+        if not range_key:
+            return self._last_24_hours_range()
+        raw_key = range_key.strip()
+        key = raw_key.lower()
+        now = datetime.now()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        if raw_key in {"今日", "今天"} or key in {"today"}:
+            start_dt = today_start
+            end_dt = now
+            label = f"{start_dt:%Y-%m-%d %H:%M} ~ {end_dt:%Y-%m-%d %H:%M}"
+        elif raw_key in {"昨日", "昨天"} or key in {"yesterday"}:
+            start_dt = today_start - timedelta(days=1)
+            end_dt = today_start - timedelta(seconds=1)
+            label = f"{start_dt:%Y-%m-%d %H:%M} ~ {end_dt:%Y-%m-%d %H:%M}"
+        elif raw_key in {"本周", "本週"} or key in {"week", "this_week"}:
+            start_dt = today_start - timedelta(days=today_start.weekday())
+            end_dt = now
+            label = f"{start_dt:%Y-%m-%d %H:%M} ~ {end_dt:%Y-%m-%d %H:%M}"
+        elif key in {"24h", "last24h", "last_24_hours"}:
+            return self._last_24_hours_range()
+        else:
+            return self._last_24_hours_range()
+
+        date_from = start_dt.strftime("%Y-%m-%d")
+        date_to = (end_dt + timedelta(days=1)).strftime("%Y-%m-%d")
+        return date_from, date_to, start_dt, end_dt, label
+
+    def _fetch_emails_for_range(
+        self,
+        date_from: str,
+        date_to: str,
+        start_dt: datetime,
+        end_dt: datetime,
+        date_label: str
+    ) -> Dict[str, Any]:
         from src.account_manager import AccountManager
         from src.services.email_service import EmailService
 
-        date_from, date_to, start_dt, end_dt, date_label = self._last_24_hours_range()
         email_cfg = self.config.get("email", {})
         limit = int(email_cfg.get("limit", 500))
         if limit <= 0:
@@ -264,6 +302,16 @@ class DailyDigestService:
             "date_to": date_to,
             "date_label": date_label
         }
+
+    def _fetch_yesterday_emails(self) -> Dict[str, Any]:
+        date_from, date_to, start_dt, end_dt, date_label = self._last_24_hours_range()
+        return self._fetch_emails_for_range(
+            date_from=date_from,
+            date_to=date_to,
+            start_dt=start_dt,
+            end_dt=end_dt,
+            date_label=date_label
+        )
 
     def _hydrate_missing_emails(
         self,
@@ -644,9 +692,13 @@ class DailyDigestService:
         max_emails = min(max_emails, 25)
         sampled = emails[:max_emails]
 
+        category_hint = "、".join(
+            ["营销", "工作", "财务", "系统", "紧急", "通讯", "个人", "通用", "垃圾"]
+        )
+
         email_lines = []
         for email in sampled:
-            subject = email.get("subject", "")
+            subject = email.get("subject_cn") or email.get("subject", "")
             sender = email.get("from", "")
             date_str = email.get("date", "")
             account = email.get("account") or email.get("account_id") or ""
@@ -654,12 +706,12 @@ class DailyDigestService:
             if not (subject or sender or date_str or preview):
                 continue
             email_lines.append(
-                f"- 主题: {subject} | 发件人: {sender} | 账号: {account} | 时间: {date_str} | 预览: {preview}"
+                f"- 主题: {subject}；发件人: {sender}；账号: {account}；时间: {date_str}；预览: {preview}"
             )
 
         highlight_lines = []
         for email in highlights:
-            subject = email.get("subject", "")
+            subject = email.get("subject_cn") or email.get("subject", "")
             sender = email.get("from", "")
             date_str = email.get("date", "")
             account = email.get("account") or email.get("account_id") or ""
@@ -667,8 +719,18 @@ class DailyDigestService:
             if not (subject or sender or date_str or preview):
                 continue
             highlight_lines.append(
-                f"- 主题: {subject} | 发件人: {sender} | 账号: {account} | 时间: {date_str} | 预览: {preview}"
+                f"- 主题: {subject}；发件人: {sender}；账号: {account}；时间: {date_str}；预览: {preview}"
             )
+
+        esc = self._escape_telegram_html
+
+        def format_account_entry(account: str, count_label: str) -> str:
+            if format_label == "HTML":
+                return f"<code>{esc(account)}</code> {count_label}"
+            if format_label == "MarkdownV2":
+                safe = self._escape_markdown_v2(account)
+                return f"`{safe}` {count_label}"
+            return f"{account} {count_label}"
 
         account_parts = []
         for item in account_stats:
@@ -676,13 +738,15 @@ class DailyDigestService:
             total = item.get("total_found")
             displayed_count = item.get("displayed", 0)
             if total is not None and total != displayed_count:
-                account_parts.append(f"{account} {displayed_count}/{total}")
+                count_label = f"{displayed_count}/{total}"
             else:
-                account_parts.append(f"{account} {displayed_count}")
+                count_label = str(displayed_count)
+            account_parts.append(format_account_entry(account, count_label))
 
         account_summary = "；".join(account_parts) if account_parts else "无"
 
-        sorted_categories = sorted(category_counts.items(), key=lambda kv: kv[1], reverse=True)
+        localized_counts = self._localize_category_counts(category_counts)
+        sorted_categories = sorted(localized_counts.items(), key=lambda kv: kv[1], reverse=True)
         if sorted_categories:
             top_categories = sorted_categories[:6]
             rest_categories = sorted_categories[6:]
@@ -697,38 +761,80 @@ class DailyDigestService:
         failed_names = ", ".join(item.get("account", "unknown") for item in failed_accounts)
 
         if format_label == "HTML":
-            title_line = f"<b>{title}</b>（{date_label}）"
+            title_line = f"<b>{esc(title)}</b>（{esc(date_label)}）"
             overview_header = "<b>概览</b>"
             highlight_header = "<b>重点</b>"
+            todo_header = "<b>待办</b>"
+            section_hint = "标题和小节必须用 <b>...</b> 加粗。"
+            title_example = "<b>标题</b>"
+            account_example = "<code>xxx</code>"
+            overview_lines = [
+                f"总数：<b>{total_found}</b>（显示 {displayed}）",
+                f"重要：<b>{important_count}</b>",
+                f"账号：{account_summary}",
+                f"分类：{esc(category_summary)}"
+            ]
+            if failed_names:
+                overview_lines.append(f"失败账号：{esc(failed_names)}")
         elif format_label == "MarkdownV2":
             title_line = f"**{title}**（{date_label}）"
             overview_header = "**概览**"
             highlight_header = "**重点**"
+            todo_header = "**待办**"
+            section_hint = "标题和小节必须用 **...** 加粗。"
+            title_example = "**标题**"
+            account_example = "`xxx`"
+            overview_lines = [
+                f"总数：{total_found}（显示 {displayed}）",
+                f"重要：{important_count}",
+                f"账号：{account_summary}",
+                f"分类：{category_summary}"
+            ]
+            if failed_names:
+                overview_lines.append(f"失败账号：{failed_names}")
         else:
             title_line = f"{title}（{date_label}）"
             overview_header = "概览"
             highlight_header = "重点"
+            todo_header = "待办"
+            section_hint = "标题和小节直接纯文本输出。"
+            title_example = "标题"
+            account_example = "xxx"
+            overview_lines = [
+                f"总数：{total_found}（显示 {displayed}）",
+                f"重要：{important_count}",
+                f"账号：{account_summary}",
+                f"分类：{category_summary}"
+            ]
+            if failed_names:
+                overview_lines.append(f"失败账号：{failed_names}")
+
+        overview_block = "\n".join(overview_lines)
 
         prompt = (
             "你是邮件日报写手，请基于以下数据生成一条 Telegram 日报消息。\n"
             f"格式要求: {format_label}. {format_hint}\n"
             "写作要求:\n"
+            "- 必须全中文（邮件标题需翻译成中文，品牌名可保留原文）。\n"
             "- 风格像日报：短句、分行、结构固定。\n"
-            "- 必须包含账号来源与分类汇总。\n"
-            "- 重点最多 5 条，每条格式：序号 + 标题（分类）｜账号｜一句话摘要。\n"
-            "- 若有行动清单才输出待办部分，否则不要输出。\n"
-            "- 不要输出“详情索引/页码/按钮”等字样。\n"
+            f"- 分类必须使用中文（可选: {category_hint}，无法判断写“通用”）。\n"
+            "- 概览部分必须原样输出，不得改动字段顺序或数字。\n"
+            "- 重点最多 5 条，必须编号 1) 2) 3) ...，每条固定 3 行：\n"
+            f"  1) {title_example}（分类）\n"
+            f"     账号：{account_example}\n"
+            "     摘要：一句话\n"
+            f"- {section_hint}\n"
+            f"- 若有行动清单才输出 {todo_header} 部分，否则不要输出。\n"
+            "- 不要使用竖线分隔符（| 或 ｜），不要用表格/代码块。\n"
+            "- 不要输出“全部邮件/详情索引/页码/按钮”等字样（完整列表由系统追加）。\n"
+            "- 不要复述输入中的“重点邮件/邮件样本”标签。\n"
             "- 不要杜撰未提供的信息。\n"
             "- 仅输出消息正文，不要额外解释。\n\n"
-            "输出结构（按顺序）：\n"
-            f"{title_line}\n"
+            "输出结构（按顺序，每个模块之间空一行）：\n"
+            f"{title_line}\n\n"
             f"{overview_header}\n"
-            f"- 总数: {total_found}（显示 {displayed}）\n"
-            f"- 重要: {important_count}\n"
-            f"- 账号: {account_summary}\n"
-            f"- 分类: {category_summary}\n"
-            + (f"- 失败账号: {failed_names}\n" if failed_names else "")
-            + f"{highlight_header}\n\n"
+            f"{overview_block}\n\n"
+            f"{highlight_header}\n"
             "重点邮件:\n"
             + ("\n".join(highlight_lines) if highlight_lines else "(无)")
             + "\n\n邮件样本:\n"
@@ -746,7 +852,7 @@ class DailyDigestService:
         response = client.chat.completions.create(
             model=cfg.get("model", "gpt-3.5-turbo"),
             messages=[
-                {"role": "system", "content": "你是一个严谨的日报生成器。"},
+                {"role": "system", "content": "你是一个严谨的日报生成器，必须严格输出指定格式。"},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.2,
@@ -759,6 +865,8 @@ class DailyDigestService:
             })
         if not content:
             return None
+        if format_label == "HTML":
+            content = self._sanitize_telegram_html(content)
         return content, normalized
 
     def _build_fallback_summary(
@@ -783,6 +891,30 @@ class DailyDigestService:
             category = item.get("category", "general") or "general"
             counts[category] = counts.get(category, 0) + 1
         return dict(sorted(counts.items(), key=lambda kv: kv[0]))
+
+    def _localize_category_name(self, name: str) -> str:
+        labels = {
+            "marketing": "营销",
+            "work": "工作",
+            "finance": "财务",
+            "system": "系统",
+            "urgent": "紧急",
+            "newsletter": "通讯",
+            "personal": "个人",
+            "general": "通用",
+            "spam": "垃圾"
+        }
+        if not name:
+            return "通用"
+        key = name.strip().lower()
+        return labels.get(key, name)
+
+    def _localize_category_counts(self, category_counts: Dict[str, int]) -> Dict[str, int]:
+        localized: Dict[str, int] = {}
+        for name, count in category_counts.items():
+            localized_name = self._localize_category_name(name)
+            localized[localized_name] = localized.get(localized_name, 0) + count
+        return localized
 
     def _parse_email_timestamp(self, email: Dict[str, Any]) -> Optional[float]:
         timestamp = email.get("timestamp")
@@ -835,13 +967,26 @@ class DailyDigestService:
             item.get("email_id"): item for item in classifications
         }
 
+        def enrich(email: Dict[str, Any]) -> Dict[str, Any]:
+            item = classification_map.get(email.get("id"))
+            if not item:
+                return email
+            enriched = dict(email)
+            if item.get("category"):
+                enriched["category"] = item.get("category")
+            if "is_important" in item:
+                enriched["is_important"] = item.get("is_important")
+            return enriched
+
         important = []
         for email in emails:
             item = classification_map.get(email.get("id"))
             if item and item.get("is_important"):
-                important.append(email)
+                important.append(enrich(email))
 
-        return important if important else emails
+        if important:
+            return important
+        return [enrich(email) for email in emails]
 
     def _strip_markdown(self, text: str) -> str:
         return text.replace("**", "").replace("`", "")
@@ -888,11 +1033,130 @@ class DailyDigestService:
     def _escape_telegram_html(self, text: str) -> str:
         return html.escape(text or "")
 
+    def _sanitize_telegram_html(self, text: str) -> str:
+        if not text:
+            return ""
+        tag_re = re.compile(r"<[^>]+>")
+        allowed_re = re.compile(r"</?(?:b|i|code|pre)>|<a href=\"[^\"]+\">|</a>")
+        parts: List[str] = []
+        cursor = 0
+        for match in tag_re.finditer(text):
+            if match.start() > cursor:
+                parts.append(html.escape(text[cursor:match.start()]))
+            tag = match.group(0)
+            if allowed_re.fullmatch(tag):
+                parts.append(tag)
+            else:
+                parts.append(html.escape(tag))
+            cursor = match.end()
+        if cursor < len(text):
+            parts.append(html.escape(text[cursor:]))
+        return "".join(parts)
+
     def _escape_markdown_v2(self, text: str) -> str:
         if not text:
             return ""
         escaped = text.replace("\\", "\\\\")
         return re.sub(r"([_\*\[\]\(\)~`>#+\-=|{}\.!])", r"\\\1", escaped)
+
+    def _needs_subject_translation(self, subject: str) -> bool:
+        if not subject:
+            return False
+        if re.search(r"[ぁ-んァ-ン]", subject):
+            return True
+        if re.search(r"[A-Za-z]", subject):
+            return True
+        if re.search(r"[\uac00-\ud7a3]", subject):
+            return True
+        return False
+
+    def _parse_json_list(self, text: str) -> Optional[List[Any]]:
+        if not text:
+            return None
+        try:
+            data = json.loads(text)
+            if isinstance(data, list):
+                return data
+        except json.JSONDecodeError:
+            pass
+        match = re.search(r"\[.*\]", text, re.S)
+        if match:
+            try:
+                data = json.loads(match.group(0))
+                if isinstance(data, list):
+                    return data
+            except json.JSONDecodeError:
+                return None
+        return None
+
+    def _translate_subjects(self, subjects: List[str]) -> List[str]:
+        if not subjects:
+            return []
+        cfg = self.config.get("summary_ai", {})
+        if not cfg.get("enabled", True):
+            return subjects
+
+        api_key = cfg.get("api_key") or os.getenv(cfg.get("api_key_env", "OPENAI_API_KEY"))
+        if not api_key:
+            return subjects
+
+        try:
+            import openai
+        except ImportError:
+            return subjects
+
+        client = openai.OpenAI(
+            api_key=api_key,
+            base_url=cfg.get("base_url")
+        )
+        numbered = "\n".join(f"{idx + 1}. {item}" for idx, item in enumerate(subjects))
+        prompt = (
+            "把以下邮件标题翻译成中文，必须输出中文。"
+            "保留品牌名/产品名/专有名词原文，保持简短。"
+            "不要保留日文/英文/韩文原句（专有名词除外）。"
+            "如果已是中文，保留原文。"
+            "只输出 JSON 数组，顺序必须与输入一致，不要附加任何文字。\n"
+            f"输入:\n{numbered}"
+        )
+        response = client.chat.completions.create(
+            model=cfg.get("model", "gpt-3.5-turbo"),
+            messages=[
+                {"role": "system", "content": "你是严谨的翻译助手。"},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.1,
+            max_tokens=400
+        )
+        content = response.choices[0].message.content.strip()
+        parsed = self._parse_json_list(content)
+        if not parsed or len(parsed) != len(subjects):
+            return subjects
+        translated: List[str] = []
+        for original, value in zip(subjects, parsed):
+            if isinstance(value, str) and value.strip():
+                translated.append(value.strip())
+            else:
+                translated.append(original)
+        return translated
+
+    def _apply_subject_translations(self, emails: List[Dict[str, Any]], max_items: int) -> None:
+        if not emails or max_items <= 0:
+            return
+        candidates: List[str] = []
+        indexes: List[int] = []
+        for idx, email in enumerate(emails[:max_items]):
+            subject = (email.get("subject") or "").strip()
+            if not subject:
+                continue
+            if self._needs_subject_translation(subject):
+                indexes.append(idx)
+                candidates.append(subject)
+        if not candidates:
+            return
+        translations = self._translate_subjects(candidates)
+        for idx, translated in zip(indexes, translations):
+            if translated:
+                emails[idx]["subject_cn"] = translated
 
     def _strip_html(self, text: str) -> str:
         if not text:
@@ -1175,56 +1439,61 @@ class DailyDigestService:
         title = self.config.get("telegram", {}).get(
             "title",
             self.config.get("lark", {}).get("title", "Daily Email Digest")
-        )
-        summary_text = self._strip_markdown(summary_text) if summary_text else ""
+        ).strip()
+        if title.lower() == "daily email digest":
+            title = "邮件日报"
+        _, action_points = self._split_summary_sections(summary_text or "")
+
+        localized_counts = self._localize_category_counts(category_counts)
+        sorted_categories = sorted(localized_counts.items(), key=lambda kv: kv[1], reverse=True)
+        if sorted_categories:
+            category_summary = " / ".join(f"{name} {count}" for name, count in sorted_categories[:6])
+        else:
+            category_summary = "无"
+
+        account_parts = []
+        for item in account_stats:
+            account = item.get("account", "unknown")
+            total = item.get("total_found")
+            displayed_count = item.get("displayed", 0)
+            if total is None or total == displayed_count:
+                account_parts.append(f"{account} {displayed_count}")
+            else:
+                account_parts.append(f"{account} {displayed_count}/{total}")
+        account_summary = "；".join(account_parts) if account_parts else "无"
 
         lines = [
-            title,
-            f"时间: {date_label}",
-            f"总数: {total_found} (显示 {displayed}) | 重要: {important_count}"
+            f"{title}（{date_label}）",
+            "",
+            "概览",
+            f"总数：{total_found}（显示 {displayed}）",
+            f"重要：{important_count}",
+            f"账号：{account_summary}",
+            f"分类：{category_summary}"
         ]
-
-        if summary_text:
-            lines.append("")
-            lines.append("摘要:")
-            lines.append(summary_text)
-
-        if account_stats:
-            lines.append("")
-            lines.append("账号:")
-            for item in account_stats:
-                account = item.get("account", "unknown")
-                total = item.get("total_found")
-                displayed_count = item.get("displayed", 0)
-                if total is None:
-                    lines.append(f"- {account}: {displayed_count}")
-                else:
-                    lines.append(f"- {account}: {displayed_count}/{total}")
 
         if highlights:
             lines.append("")
-            lines.append("重点邮件:")
-            for email in highlights:
-                subject = email.get("subject") or "(无主题)"
-                sender = email.get("from") or "unknown"
-                date_str = email.get("date") or ""
+            lines.append("重点")
+            for idx, email in enumerate(highlights[:5], 1):
+                subject = email.get("subject_cn") or email.get("subject") or "(无主题)"
+                category = self._localize_category_name(email.get("category") or "general")
                 account = email.get("account") or email.get("account_id") or "unknown"
-                meta_parts = [part for part in (sender, account, date_str) if part]
-                lines.append(f"- {subject}")
-                if meta_parts:
-                    lines.append("  " + " | ".join(meta_parts))
+                preview = self._get_preview(email, max_len=80)
+                lines.append(f"{idx}) {subject}（{category}）")
+                lines.append(f"账号：{account}")
+                if preview:
+                    lines.append(f"摘要：{preview}")
 
-        lines.append("")
-        lines.append("分类:")
-        if category_counts:
-            for name, count in category_counts.items():
-                lines.append(f"- {name}: {count}")
-        else:
-            lines.append("- general: 0")
+        if action_points:
+            lines.append("")
+            lines.append("待办")
+            for line in action_points[:5]:
+                lines.append(f"- {line}")
 
         if truncated or failed_accounts or missing_details:
             lines.append("")
-            lines.append("备注:")
+            lines.append("备注")
             if truncated:
                 lines.append("- 仅展示部分邮件（命中展示上限）。")
             if failed_accounts:
@@ -1254,62 +1523,58 @@ class DailyDigestService:
         title = self.config.get("telegram", {}).get(
             "title",
             self.config.get("lark", {}).get("title", "Daily Email Digest")
-        )
-        summary_points, action_points = self._split_summary_sections(summary_text)
+        ).strip()
+        if title.lower() == "daily email digest":
+            title = "邮件日报"
+        _, action_points = self._split_summary_sections(summary_text or "")
         esc = self._escape_telegram_html
 
+        localized_counts = self._localize_category_counts(category_counts)
+        sorted_categories = sorted(localized_counts.items(), key=lambda kv: kv[1], reverse=True)
+        if sorted_categories:
+            category_summary = " / ".join(f"{name} {count}" for name, count in sorted_categories[:6])
+        else:
+            category_summary = "无"
+
+        account_parts = []
+        for item in account_stats:
+            account = esc(item.get("account", "unknown"))
+            total = item.get("total_found")
+            displayed_count = item.get("displayed", 0)
+            if total is None or total == displayed_count:
+                account_parts.append(f"<code>{account}</code> {displayed_count}")
+            else:
+                account_parts.append(f"<code>{account}</code> {displayed_count}/{total}")
+        account_summary = "；".join(account_parts) if account_parts else "无"
+
         lines = [
-            f"<b>{esc(title)}</b>",
-            f"时间: {esc(date_label)}",
-            f"总数: {total_found} (显示 {displayed}) | 重要: {important_count}"
+            f"<b>{esc(title)}</b>（{esc(date_label)}）",
+            "",
+            "<b>概览</b>",
+            f"总数：<b>{total_found}</b>（显示 {displayed}）",
+            f"重要：<b>{important_count}</b>",
+            f"账号：{account_summary}",
+            f"分类：{esc(category_summary)}"
         ]
-
-        if summary_points:
-            lines.append("")
-            lines.append("<b>今日要点</b>")
-            for line in summary_points[:5]:
-                lines.append(f"• {esc(line)}")
-
-        if account_stats:
-            lines.append("")
-            lines.append("<b>账号概况</b>")
-            for item in account_stats:
-                account = esc(item.get("account", "unknown"))
-                total = item.get("total_found")
-                displayed_count = item.get("displayed", 0)
-                if total is None:
-                    lines.append(f"• {account}: {displayed_count}")
-                else:
-                    lines.append(f"• {account}: {displayed_count}/{total}")
 
         if highlights:
             lines.append("")
-            lines.append("<b>重点邮件</b>")
-            for email in highlights:
-                subject = esc(email.get("subject") or "(无主题)")
-                sender = email.get("from") or "unknown"
+            lines.append("<b>重点</b>")
+            for idx, email in enumerate(highlights[:5], 1):
+                subject = email.get("subject_cn") or email.get("subject") or "(无主题)"
+                category = self._localize_category_name(email.get("category") or "general")
                 account = email.get("account") or email.get("account_id") or "unknown"
-                date_str = email.get("date") or ""
-                meta_parts = [
-                    esc(part) for part in (sender, account, date_str) if part
-                ]
-                lines.append(f"• {subject}")
-                if meta_parts:
-                    lines.append(f"  <i>{' | '.join(meta_parts)}</i>")
+                preview = self._get_preview(email, max_len=80)
+                lines.append(f"{idx}) <b>{esc(subject)}</b>（{esc(category)}）")
+                lines.append(f"账号：<code>{esc(account)}</code>")
+                if preview:
+                    lines.append(f"摘要：{esc(preview)}")
 
         if action_points:
             lines.append("")
-            lines.append("<b>行动清单</b>")
+            lines.append("<b>待办</b>")
             for line in action_points[:5]:
                 lines.append(f"• {esc(line)}")
-
-        lines.append("")
-        lines.append("<b>分类分布</b>")
-        if category_counts:
-            for name, count in category_counts.items():
-                lines.append(f"• {esc(name)}: {count}")
-        else:
-            lines.append("• general: 0")
 
         if truncated or failed_accounts or missing_details:
             lines.append("")
@@ -1453,12 +1718,15 @@ class DailyDigestService:
             account_id = email.get("account_id") or email.get("account")
             if not email_id or not account_id:
                 continue
+            account = email.get("account") or account_id
             items.append({
                 "id": str(email_id),
                 "account_id": account_id,
+                "account": account,
                 "folder": email.get("folder") or "INBOX",
                 "message_id": email.get("message_id"),
                 "subject": email.get("subject") or "",
+                "subject_cn": email.get("subject_cn") or "",
                 "from": email.get("from") or "",
                 "date": email.get("date") or ""
             })
@@ -1634,10 +1902,21 @@ class DailyDigestService:
     def run(
         self,
         dry_run: bool = False,
-        debug: Optional[Dict[str, Any]] = None
+        debug: Optional[Dict[str, Any]] = None,
+        range_key: Optional[str] = None
     ) -> Dict[str, Any]:
         self._debug_config = self._resolve_debug_config(debug)
-        fetch_result = self._fetch_yesterday_emails()
+        if range_key:
+            date_from, date_to, start_dt, end_dt, date_label = self._resolve_range(range_key)
+            fetch_result = self._fetch_emails_for_range(
+                date_from=date_from,
+                date_to=date_to,
+                start_dt=start_dt,
+                end_dt=end_dt,
+                date_label=date_label
+            )
+        else:
+            fetch_result = self._fetch_yesterday_emails()
         if not fetch_result.get("success"):
             return fetch_result
 
@@ -1695,6 +1974,15 @@ class DailyDigestService:
         payload = self._build_lark_card_v2(lark_elements)
 
         telegram_cfg = self.config.get("telegram", {})
+        if telegram_cfg.get("enabled", False):
+            max_items_env = os.getenv("TELEGRAM_MAX_ITEMS")
+            max_items = int(max_items_env) if max_items_env else DEFAULT_TELEGRAM_MAX_ITEMS
+            translate_limit = max_items
+            summary_cfg = self.config.get("summary_ai", {})
+            summary_max = int(summary_cfg.get("max_emails", 40)) if summary_cfg else 0
+            if summary_max > 0:
+                translate_limit = max(translate_limit, min(summary_max, len(emails)))
+            self._apply_subject_translations(emails, translate_limit)
         telegram_max = int(telegram_cfg.get("max_highlights", 10))
         telegram_highlights = highlight_candidates[:telegram_max] if telegram_max > 0 else []
         telegram_text, telegram_parse_mode = self._build_telegram_message(
@@ -1717,11 +2005,10 @@ class DailyDigestService:
         session_store = self._get_session_store()
         if session_store:
             max_items_env = os.getenv("TELEGRAM_MAX_ITEMS")
-            page_size_env = os.getenv("TELEGRAM_PAGE_SIZE")
             max_items = int(max_items_env) if max_items_env else DEFAULT_TELEGRAM_MAX_ITEMS
-            page_size = int(page_size_env) if page_size_env else DEFAULT_TELEGRAM_PAGE_SIZE
             items = self._build_telegram_interactive_items(emails, max_items=max_items)
             if items:
+                page_size = len(items)
                 session_store.cleanup()
                 telegram_session_id = secrets.token_urlsafe(8)
                 base_text = telegram_text
@@ -1791,6 +2078,7 @@ class DailyDigestService:
             else None,
             "lark_payload": payload,
             "telegram_message": telegram_text,
+            "telegram_parse_mode": telegram_parse_mode,
             "telegram_session_id": telegram_session_id,
             "notification": lark_result,
             "notifications": {

@@ -6,8 +6,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
+import threading
 from urllib.parse import urlparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -16,8 +18,11 @@ repo_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(repo_root))
 
 from src.config.digest_config import DigestConfigManager
+from src.config.paths import LOG_DIR
 from src.services.telegram_webhook_service import TelegramWebhookService
 import requests
+
+logger = logging.getLogger(__name__)
 
 
 class TelegramWebhookHandler(BaseHTTPRequestHandler):
@@ -41,10 +46,18 @@ class TelegramWebhookHandler(BaseHTTPRequestHandler):
             self.send_response(400)
             self.end_headers()
             return
-        self.server.webhook_service.handle_update(payload)
+        self._log_update(payload)
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"OK")
+        try:
+            self.wfile.write(b"OK")
+        except BrokenPipeError:
+            return
+        threading.Thread(
+            target=self.server.webhook_service.handle_update,
+            args=(payload,),
+            daemon=True
+        ).start()
 
     def do_GET(self) -> None:
         if self.path in ("/", "/health"):
@@ -57,6 +70,34 @@ class TelegramWebhookHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format: str, *args: object) -> None:
         return
+
+    def _log_update(self, payload: dict) -> None:
+        update_id = payload.get("update_id")
+        if "callback_query" in payload:
+            callback = payload.get("callback_query", {})
+            data = callback.get("data", "")
+            from_user = callback.get("from", {}).get("id")
+            message_id = callback.get("message", {}).get("message_id")
+            logger.info(
+                "Telegram callback update_id=%s from=%s message_id=%s data=%s",
+                update_id,
+                from_user,
+                message_id,
+                data
+            )
+            return
+        message = payload.get("message", {})
+        if message:
+            from_user = message.get("from", {}).get("id")
+            text = message.get("text", "")
+            logger.info(
+                "Telegram message update_id=%s from=%s text=%s",
+                update_id,
+                from_user,
+                text
+            )
+            return
+        logger.info("Telegram update_id=%s (unknown payload)", update_id)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -90,6 +131,16 @@ def _set_webhook(
 
 def main() -> None:
     args = _parse_args()
+    log_path = Path(os.getenv("TELEGRAM_WEBHOOK_LOG", str(LOG_DIR / "telegram_webhook.log")))
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        handlers=[
+            logging.FileHandler(log_path, encoding="utf-8"),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
     cfg_manager = DigestConfigManager(args.config)
     cfg = cfg_manager.config
     telegram_cfg = cfg.get("telegram", {})
@@ -115,6 +166,14 @@ def main() -> None:
     if public_url:
         _set_webhook(service, public_url, secret_token)
 
+    logger.info(
+        "Telegram webhook server started host=%s port=%s path=%s webhook_url=%s log=%s",
+        host,
+        port,
+        path,
+        public_url,
+        log_path
+    )
     print(json.dumps({
         "message": "Telegram webhook server started",
         "host": host,
