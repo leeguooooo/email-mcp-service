@@ -1,7 +1,11 @@
-# AI Skill: Mailbox CLI
+# AI Skill: Mailbox CLI (OpenClaw-first)
 
 This document is written for an AI agent that is allowed to run shell commands.
 Goal: reliably read/manage emails by calling the `mailbox` CLI.
+
+OpenClaw-first: channel delivery (Telegram/Slack/Discord/etc) and scheduling
+are handled by OpenClaw. The mailbox CLI focuses on email operations and
+returns structured JSON.
 
 ## Skill Keywords (OpenClaw)
 
@@ -46,6 +50,11 @@ or old legacy layout), the CLI will read it and best-effort migrate to `auth.jso
   - `2`: invalid CLI usage (argparse validation / missing args)
 
 For automation: always use `--json` and check both exit code and `success`.
+
+## OpenClaw usage
+- Treat mailbox as a tool: OpenClaw calls the CLI and consumes JSON output.
+- For channel delivery, OpenClaw formats/sends messages using its built-in
+  integrations. Mailbox should not send directly to chat channels.
 
 ## Required safety rules for AI
 
@@ -115,7 +124,7 @@ The CLI implements workflows directly. Prefer calling the CLI subcommands
 Examples:
 
 ```bash
-mailbox digest run --dry-run
-mailbox notify stats 7
+mailbox digest run --json
+mailbox monitor status --json
 mailbox inbox --limit 15 --text
 ```

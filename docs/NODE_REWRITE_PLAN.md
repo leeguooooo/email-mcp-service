@@ -1,10 +1,13 @@
-# Node Rewrite Plan (CLI + Skill)
+# Node Rewrite Plan (OpenClaw-first CLI + Skill)
 
 ## Summary
 Rebuild the project as a pure Node.js implementation packaged into prebuilt
-platform binaries and distributed via npm. Keep the existing `mailbox` CLI
-contract and config/data compatibility, but replace the Python codebase with
-Node.js.
+platform binaries and distributed via npm, **with OpenClaw as the primary
+integration surface**. Keep the existing `mailbox` CLI contract and
+config/data compatibility, but replace the Python codebase with Node.js.
+
+OpenClaw will be responsible for channels (Telegram/Slack/Discord/etc) and
+scheduling; mailbox will focus on email operations + structured outputs.
 
 This plan targets the following commands as MVP:
 - account
@@ -18,6 +21,7 @@ This plan targets the following commands as MVP:
 - Pure Node.js implementation (JS, not TS).
 - Zero-setup user experience: `npm i -g mailbox-cli` -> `mailbox` (no Python,
   no native build/compilation on user machines).
+- OpenClaw-first usage: mailbox works cleanly as an OpenClaw skill/tool.
 - Keep current CLI JSON output contract for skill usage.
 - Keep config/data compatibility:
   - `~/.config/mailbox/` (auth.json, config.toml)
@@ -31,6 +35,8 @@ This plan targets the following commands as MVP:
 - MCP protocol or stdio server.
 - Rewriting third-party services (keep same providers/flows).
 - Pure-JS distribution that requires local native builds on install.
+- Direct channel delivery from mailbox CLI (Telegram/Lark/Email) when OpenClaw
+  already provides channels.
 
 ## Distribution Decision (User Simplicity)
 To keep installation as simple as possible, we will **continue the current npm
@@ -41,6 +47,21 @@ distribution model**:
 The difference is the **binary will be produced from the Node.js rewrite**,
 not from Python. This keeps the user experience unchanged (`npm i -g
 mailbox-cli`) and avoids native compilation at install time.
+
+## OpenClaw Integration (Primary Path)
+- Mailbox is treated as an OpenClaw skill/tool.
+- OpenClaw owns channel delivery + cron scheduling.
+- Mailbox focuses on email operations and returns structured JSON + optional
+  human-readable summaries.
+- If a channel is not supported by OpenClaw, add an optional notifier later,
+  but keep it disabled by default.
+
+### OpenClaw Cron (Example)
+OpenClaw should invoke mailbox commands directly and handle delivery.
+Suggested commands:
+- Digest: `mailbox digest run --json`
+- Monitor: `mailbox monitor run --json`
+- Inbox summary: `mailbox inbox --limit 15 --text`
 
 ## Compatibility Contract
 ### CLI
@@ -70,6 +91,7 @@ packages/
   cli/               # CLI command definitions and I/O
   workflows/         # digest/monitor/inbox orchestration
   shared/            # config, logging, types, utils
+  skills/            # OpenClaw skill metadata (SKILL.md, docs)
 ```
 
 Core layers:
@@ -78,6 +100,7 @@ Core layers:
 - email: list/search/show/mark/delete/move/flag/send
 - sync: scheduler + incremental cache + health stats
 - workflows: digest/monitor/inbox (CLI wrappers calling services)
+- skills: OpenClaw-facing docs/examples and invocation guidance
 
 ## Tech Stack
 - IMAP: imapflow
@@ -115,8 +138,10 @@ Keep existing filenames and locations:
 - `sync_config.json`
 - `sync_health_history.json`
 - `daily_digest_config.json`
-- `notification_config.json`
 - `email_monitor_config.json`
+
+Notes:
+- `notification_config.json` becomes optional/legacy. OpenClaw handles channels.
 
 ## Migration Strategy (No MCP)
 Phase 0: Contract freeze
@@ -144,6 +169,7 @@ Phase 4: Sync + cache
 Phase 5: Workflows
 - Implement digest/monitor/inbox using Node services.
 - Keep config file names and formats.
+- Remove direct channel notifications; return payloads for OpenClaw to deliver.
 
 Phase 6: Remove Python/MCP
 - Remove Python MCP code and update docs.

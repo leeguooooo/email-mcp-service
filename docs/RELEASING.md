@@ -36,12 +36,25 @@ Publishing model:
 
 Each platform package bundles a `bin/mailbox` executable.
 
-Release pipeline (expected):
+Release pipeline (automated):
 
-1. Download GitHub Release assets for the same version.
-2. Extract `dist/mailbox` into the right platform package `bin/mailbox`.
-3. Set executable bit on unix platforms.
-4. Publish platform packages first, then publish `mailbox-cli`.
+This repository uses GitHub Actions to publish npm packages from a git tag.
+
+Required secret:
+
+- `NPM_TOKEN` (an npm access token with publish rights)
+
+Flow:
+
+1. Push a tag `vX.Y.Z`.
+2. CI builds the `mailbox` binary on each target OS.
+3. CI injects the binary into each platform package `bin/mailbox`.
+4. CI sets `package.json` versions to `X.Y.Z` (platform packages + launcher).
+5. CI publishes platform packages first, then publishes `mailbox-cli`.
+
+Workflow:
+
+- `.github/workflows/publish-npm.yml`
 
 Note: the `mailbox-cli/` directory is intended to become its own repo.
 
