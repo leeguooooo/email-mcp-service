@@ -27,17 +27,22 @@ async function _fetchEmailsForAccount({ account, folder, limit, offset, unreadOn
   const openFolder = _normalizeFolder(folder);
   return withImapClient(account, async (client) => {
     const st = await client.mailboxOpen(openFolder);
-    const uids = await client.search(unreadOnly ? ["UNSEEN"] : ["ALL"]);
+    // ImapFlow defaults to sequence numbers; force UID mode.
+    const uids = await client.search(unreadOnly ? { seen: false } : { all: true }, { uid: true });
     const sorted = _uidsSortedDesc(uids);
     const slice = sorted.slice(offset, offset + limit);
 
     const emails = [];
-    for await (const msg of client.fetch(slice, {
-      envelope: true,
-      flags: true,
-      internalDate: true,
-      bodyStructure: true,
-    })) {
+    for await (const msg of client.fetch(
+      slice,
+      {
+        envelope: true,
+        flags: true,
+        internalDate: true,
+        bodyStructure: true,
+      },
+      { uid: true }
+    )) {
       const env = msg.envelope || {};
       const flags = msg.flags || new Set([]);
       const unread = !flags.has("\\Seen");
@@ -129,7 +134,7 @@ async function listEmails({ limit = 100, offset = 0, unread_only = false, folder
         accounts_info: [],
         offset: off,
         limit: lim,
-        from_cache,
+        from_cache: false,
       };
     }
 
@@ -182,60 +187,114 @@ async function searchEmails({ query, account_id = "", date_from = "", date_to = 
   const unreadOnly = Boolean(unread_only);
 
   const started = Date.now();
-  const listResult = await listEmails({ limit: Math.max(lim + off, 200), offset: 0, unread_only: unreadOnly, folder, account_id, use_cache: false });
-  if (!listResult.success) {
-    return {
-      success: false,
-      error: listResult.error || "search failed",
-    };
+  const openFolder = _normalizeFolder(folder);
+
+  const df = date_from ? new Date(String(date_from)) : null;
+  const dt = date_to ? new Date(String(date_to)) : null;
+  const since = df && !Number.isNaN(df.getTime()) ? df : null;
+  const before = dt && !Number.isNaN(dt.getTime()) ? dt : null;
+
+  const baseCriteria = {};
+  if (unreadOnly) baseCriteria.seen = false;
+  else baseCriteria.all = true;
+
+  // Prefer server-side filtering.
+  baseCriteria.text = q;
+  if (since) baseCriteria.since = since;
+  if (before) baseCriteria.before = before;
+
+  const failed_accounts = [];
+  const perAccount = [];
+
+  const targets = [];
+  if (account_id) {
+    const acc = accounts.getAccountByIdOrEmail(account_id);
+    if (!acc.success) return acc;
+    targets.push(acc.account);
+  } else {
+    const all = accounts.getAllAccountsResolved();
+    if (!all.success) return all;
+    targets.push(...(all.accounts || []));
   }
 
-  // Best-effort filtering (mock mode + basic live list)
-  let items = listResult.emails || [];
-  items = items.filter((e) => {
-    const hay = `${e.subject || ""} ${e.from || ""}`.toLowerCase();
-    return hay.includes(q.toLowerCase());
-  });
+  // Fetch more than needed per account so we can merge and slice globally.
+  const perAccountFetchLimit = Math.max(lim + off, 200);
 
-  if (date_from) {
-    const df = new Date(String(date_from));
-    if (!Number.isNaN(df.getTime())) {
-      items = items.filter((e) => {
-        const d = new Date(String(e.date || "").replace(" ", "T") + "Z");
-        return !Number.isNaN(d.getTime()) && d >= df;
+  for (const acc of targets) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const r = await withImapClient(acc, async (client) => {
+        const lock = await client.getMailboxLock(openFolder);
+        try {
+          const uids = await client.search(baseCriteria, { uid: true });
+          const total = Array.isArray(uids) ? uids.length : 0;
+          const sorted = _uidsSortedDesc(uids);
+          const slice = sorted.slice(0, perAccountFetchLimit);
+
+          const emails = [];
+          for await (const msg of client.fetch(
+            slice,
+            { envelope: true, flags: true, internalDate: true, bodyStructure: true },
+            { uid: true }
+          )) {
+            const env = msg.envelope || {};
+            const flags = msg.flags || new Set([]);
+            const unread = !flags.has("\\Seen");
+            emails.push({
+              id: String(msg.uid),
+              uid: String(msg.uid),
+              subject: env.subject || "",
+              from: firstAddress(env.from),
+              to: firstAddress(env.to),
+              date: formatDateTime(msg.internalDate || env.date),
+              unread,
+              flagged: flags.has("\\Flagged"),
+              is_flagged: flags.has("\\Flagged"),
+              has_attachments: hasAttachmentsFromBodyStructure(msg.bodyStructure),
+              message_id: env.messageId || "",
+              account: acc.email,
+              account_id: acc.id,
+              folder: openFolder,
+              preview: "",
+            });
+          }
+
+          return { success: true, total_found: total, emails };
+        } finally {
+          lock.release();
+        }
       });
+      perAccount.push({ account: acc, ...r });
+    } catch (e) {
+      failed_accounts.push({ account: acc.email || "", account_id: acc.id || "", error: e && e.message ? e.message : "search failed" });
+      perAccount.push({ account: acc, success: false, error: e && e.message ? e.message : "search failed", total_found: 0, emails: [] });
     }
   }
-  if (date_to) {
-    const dt = new Date(String(date_to));
-    if (!Number.isNaN(dt.getTime())) {
-      items = items.filter((e) => {
-        const d = new Date(String(e.date || "").replace(" ", "T") + "Z");
-        return !Number.isNaN(d.getTime()) && d <= dt;
-      });
-    }
-  }
 
-  const total_found = items.length;
-  const page = items.slice(off, off + lim);
+  const allEmails = perAccount.flatMap((r) => (r && r.success ? r.emails || [] : []));
+  allEmails.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
 
+  const page = allEmails.slice(off, off + lim);
+  const total_found = perAccount.reduce((sum, r) => sum + Number((r && r.total_found) || 0), 0);
+  const accounts_count = targets.length;
   const search_time = (Date.now() - started) / 1000;
+
   return {
-    success: true,
+    success: failed_accounts.length === 0,
     emails: page,
     total_found,
     displayed: page.length,
-    accounts_count: listResult.accounts_count || 0,
+    accounts_count,
     offset: off,
     limit: lim,
     total_emails: page.length,
-    accounts_searched: listResult.accounts_count || 0,
-    accounts_info: listResult.accounts_info || [],
+    accounts_searched: accounts_count,
+    accounts_info: [],
     search_time,
     search_params: { query: q, date_from, date_to, unread_only: unreadOnly, folder },
-    failed_accounts: [],
+    failed_accounts,
     failed_searches: [],
-    partial_success: true,
+    partial_success: failed_accounts.length > 0,
   };
 }
 
@@ -249,13 +308,17 @@ async function showEmail({ email_id, folder = "INBOX", account_id = "" } = {}) {
   const openFolder = _normalizeFolder(folder);
   return withImapClient(acc.account, async (client) => {
     await client.mailboxOpen(openFolder);
-    const msg = await client.fetchOne(Number(id), {
-      envelope: true,
-      flags: true,
-      internalDate: true,
-      bodyStructure: true,
-      source: true,
-    });
+    const msg = await client.fetchOne(
+      Number(id),
+      {
+        envelope: true,
+        flags: true,
+        internalDate: true,
+        bodyStructure: true,
+        source: true,
+      },
+      { uid: true }
+    );
     if (!msg) return { success: false, error: `Email not found: ${id}` };
 
     if (_isTestMode()) {
@@ -355,8 +418,8 @@ async function markEmails({ email_ids, mark_as, folder = "INBOX", account_id = "
     for (const uid of uids) {
       try {
         // eslint-disable-next-line no-await-in-loop
-        if (markAs === "read") await client.messageFlagsAdd(uid, ["\\Seen"]);
-        else await client.messageFlagsRemove(uid, ["\\Seen"]);
+        if (markAs === "read") await client.messageFlagsAdd(uid, ["\\Seen"], { uid: true });
+        else await client.messageFlagsRemove(uid, ["\\Seen"], { uid: true });
         results.push({ success: true, email_id: String(uid), folder: openFolder, account_id: acc.account.id });
       } catch (e) {
         results.push({ success: false, email_id: String(uid), folder: openFolder, account_id: acc.account.id, error: e && e.message ? e.message : "failed" });
@@ -417,8 +480,8 @@ async function deleteEmails({ email_ids, folder = "INBOX", permanent = false, tr
     for (const uid of uids) {
       try {
         // eslint-disable-next-line no-await-in-loop
-        if (permanent) await client.messageDelete(uid);
-        else await client.messageMove(uid, trashName);
+        if (permanent) await client.messageDelete(uid, { uid: true });
+        else await client.messageMove(uid, trashName, { uid: true });
         results.push({ success: true, email_id: String(uid), folder: openFolder, account_id: acc.account.id });
       } catch (e) {
         results.push({ success: false, email_id: String(uid), folder: openFolder, account_id: acc.account.id, error: e && e.message ? e.message : "failed" });
@@ -614,7 +677,7 @@ async function downloadAttachments({ email_id, folder = "INBOX", account_id, out
 
   return withImapClient(acc.account, async (client) => {
     await client.mailboxOpen(openFolder);
-    const msg = await client.fetchOne(uid, { source: true, envelope: true });
+    const msg = await client.fetchOne(uid, { source: true, envelope: true }, { uid: true });
     if (!msg || !msg.source) return { success: false, error: `Email not found: ${email_id}` };
 
     const { simpleParser } = require("mailparser");
@@ -671,8 +734,8 @@ async function flagEmail({ email_id, set_flag, flag_type = "flagged", folder = "
 
   return withImapClient(acc.account, async (client) => {
     await client.mailboxOpen(openFolder);
-    if (set) await client.messageFlagsAdd(uid, [flag]);
-    else await client.messageFlagsRemove(uid, [flag]);
+    if (set) await client.messageFlagsAdd(uid, [flag], { uid: true });
+    else await client.messageFlagsRemove(uid, [flag], { uid: true });
     return {
       success: true,
       message: `Flag "${flagType}" ${set ? "set" : "unset"}`,
@@ -702,7 +765,7 @@ async function moveEmails({ email_ids, target_folder, source_folder = "INBOX", a
     for (const uid of ids) {
       try {
         // eslint-disable-next-line no-await-in-loop
-        await client.messageMove(uid, tgt);
+        await client.messageMove(uid, tgt, { uid: true });
         moved += 1;
       } catch {
         failed_ids.push(String(uid));

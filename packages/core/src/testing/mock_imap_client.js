@@ -50,13 +50,75 @@ class MockImapClient {
     return { path: this._mailbox, exists: messages.length, unseen };
   }
 
-  async search(query) {
+  async getMailboxLock(name) {
+    await this.mailboxOpen(name);
+    return {
+      release() {
+        // no-op
+      },
+    };
+  }
+
+  async search(query, options) {
     const mb = getMailbox(this._account.id, this._mailbox);
     if (!mb) throw new Error(`Mailbox not found: ${this._mailbox}`);
     const messages = mb.messages || [];
 
-    const wantsUnseen = Array.isArray(query) ? query.includes("UNSEEN") : false;
-    const list = wantsUnseen ? messages.filter((m) => !m.flags.has("\\Seen")) : messages;
+    // Support legacy-style array queries (used by older code).
+    if (Array.isArray(query)) {
+      const wantsUnseen = query.includes("UNSEEN");
+      const list = wantsUnseen ? messages.filter((m) => !m.flags.has("\\Seen")) : messages;
+      return list.map((m) => m.uid);
+    }
+
+    // Support ImapFlow SearchObject subset.
+    const q = query && typeof query === "object" ? query : {};
+
+    let list = messages;
+
+    if (q.seen === false) {
+      list = list.filter((m) => !m.flags.has("\\Seen"));
+    }
+
+    if (typeof q.from === "string" && q.from.trim()) {
+      const needle = q.from.toLowerCase();
+      list = list.filter((m) => String(m.from || "").toLowerCase().includes(needle));
+    }
+    if (typeof q.to === "string" && q.to.trim()) {
+      const needle = q.to.toLowerCase();
+      list = list.filter((m) => String(m.to || "").toLowerCase().includes(needle));
+    }
+    if (typeof q.cc === "string" && q.cc.trim()) {
+      const needle = q.cc.toLowerCase();
+      list = list.filter((m) => String(m.cc || "").toLowerCase().includes(needle));
+    }
+    if (typeof q.subject === "string" && q.subject.trim()) {
+      const needle = q.subject.toLowerCase();
+      list = list.filter((m) => String(m.subject || "").toLowerCase().includes(needle));
+    }
+    if (typeof q.text === "string" && q.text.trim()) {
+      const needle = q.text.toLowerCase();
+      list = list.filter((m) => {
+        const hay = `${m.subject || ""} ${m.from || ""} ${m.to || ""} ${m.cc || ""} ${m.body || ""}`.toLowerCase();
+        return hay.includes(needle);
+      });
+    }
+
+    if (q.since instanceof Date && !Number.isNaN(q.since.getTime())) {
+      list = list.filter((m) => {
+        const d = new Date(String(m.date || "").replace(" ", "T") + "Z");
+        return !Number.isNaN(d.getTime()) && d >= q.since;
+      });
+    }
+    if (q.before instanceof Date && !Number.isNaN(q.before.getTime())) {
+      list = list.filter((m) => {
+        const d = new Date(String(m.date || "").replace(" ", "T") + "Z");
+        return !Number.isNaN(d.getTime()) && d < q.before;
+      });
+    }
+
+    // options.uid affects return type in real ImapFlow (uids vs seq). Mock is UID-only.
+    void options;
     return list.map((m) => m.uid);
   }
 
