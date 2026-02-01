@@ -1,6 +1,17 @@
-# 📚 Documentation
+# Documentation
 
-Complete documentation for MCP Email Service.
+Mailbox is now a CLI-first project.
+
+Primary docs for the Node CLI rewrite:
+
+- `docs/AI_SKILL_MAILBOX_CLI.md` (automation/agent usage)
+- `docs/CLI_JSON_CONTRACT.md` (JSON output shapes)
+- `docs/RELEASING.md` (binaries + npm distribution)
+- `docs/NODE_REWRITE_PLAN.md` (roadmap/architecture)
+
+Legacy Python/MCP docs are kept for reference only:
+
+- `docs/LEGACY_PYTHON.md`
 
 ---
 
@@ -71,4 +82,4 @@ For developers who want to contribute:
 
 ---
 
-**Last Updated**: 2025-10-17
+**Last Updated**: 2026-02-01

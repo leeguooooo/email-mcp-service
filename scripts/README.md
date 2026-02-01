@@ -1,6 +1,16 @@
-# Scripts - 集成示例与参考实现
+# Scripts (Legacy)
 
-> **⚠️ 重要说明**: 这些脚本是**示例实现**，展示如何组合 MCP 原子操作来实现高级功能。它们**不是 MCP 核心能力**，而是可选的参考代码和集成工具。
+This directory contains legacy Python scripts and integration examples from the
+pre-Node rewrite era.
+
+The supported interface is the `mailbox` CLI (Node.js). Prefer:
+
+- `mailbox digest ...`
+- `mailbox monitor ...`
+- `mailbox inbox ...`
+- `mailbox sync ...`
+
+References to `uv`, direct `python scripts/*.py`, or MCP tool calls are legacy.
 
 ## 📋 目录
 
@@ -11,19 +21,19 @@
 
 ## 🎯 设计定位
 
-### MCP 核心 vs 示例脚本
+### CLI 核心 vs 工作流脚本
 
 | 类型 | 职责 | 位置 |
 |------|------|------|
-| **MCP 核心** | 提供原子级邮件操作（28个工具） | `src/` |
-| **示例脚本** | 展示如何组合操作实现业务逻辑 | `scripts/` (本目录) |
+| **CLI 核心** | 账户/邮件的基础操作与缓存同步 | `src/cli.py` + `src/services/` |
+| **工作流脚本** | 可选的定时任务、通知推送、整理与摘要 | `scripts/` (本目录) |
 
 ### 为什么要分离？
 
-1. **保持 MCP 的纯粹性**: MCP 只做数据访问，不做业务决策
-2. **灵活性**: 不同的 AI 可能有不同的整合需求
-3. **可定制**: 用户可以根据自己的需求修改示例脚本
-4. **职责清晰**: 翻译、分类、摘要等能力属于上层 AI
+1. **可维护**: 基础能力收敛到 `mailbox` CLI
+2. **可组合**: 工作流脚本按需启用/修改
+3. **可集成**: 适合 cron/systemd/n8n 等调度平台
+4. **职责清晰**: 摘要/分类/翻译属于工作流层
 
 ## 📁 示例脚本
 

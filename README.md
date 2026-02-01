@@ -1,459 +1,89 @@
-# MCP Email Service
+#+#+#+#+### Mailbox CLI
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![uv](https://img.shields.io/badge/managed%20by-uv-purple)](https://github.com/astral-sh/uv)
-[![Tests](https://img.shields.io/badge/tests-71%2F72%20passing-brightgreen)](./tests)
-[![GitHub Sponsors](https://img.shields.io/github/sponsors/leeguooooo?logo=github)](https://github.com/sponsors/leeguooooo)
+CLI-first email management for multi-account IMAP/SMTP with a local sync cache.
 
-A unified MCP email service supporting multi-account management with monitoring, notifications, and optional AI translation/summaries.
+Primary interface: the `mailbox` CLI (Node.js implementation). This repo ships
+prebuilt platform binaries via npm (no Python required for end users).
 
-> **New Feature**: Daily email digest with AI classification + Lark/Telegram notifications, scheduled locally.
+## Supported Providers
 
-## Local Scheduled Monitoring & Digest
+- 163 Mail (mail.163.com / mail.126.com)
+- QQ Mail (mail.qq.com)
+- Gmail (mail.google.com)
+- Outlook/Hotmail
+- Custom IMAP servers
 
-**Run monitoring and digest jobs locally with a simple scheduler or cron.**
+## Install
 
-- **Multi-platform Notifications**: Supports Lark/Feishu, Telegram, custom webhooks
-- **Local Scheduling**: Run via `schedule` daemon or cron
-- **Deduplication**: Prevents duplicate notifications
-
-### Quick Start (Local)
+### npm (recommended)
 
 ```bash
-# 1. Copy digest config
-cp config_templates/daily_digest_config.example.json data/daily_digest_config.json
-
-# 2. Run once
-uv run python scripts/daily_email_digest.py run
-
-# 3. Start local scheduler
-uv run python scripts/daily_email_digest.py daemon
+npm install -g mailbox-cli
+mailbox --help
 ```
 
-## Supported Email Providers
+The npm package ships prebuilt binaries per platform (no Python required).
 
-- **163 Mail** (mail.163.com / mail.126.com)
-- **QQ Mail** (mail.qq.com)  
-- **Gmail** (mail.google.com)
-- **Outlook/Hotmail**
-- **Custom IMAP servers**
-
-## Quick Start
-
-### Option 1: Install via Smithery (Recommended)
+### From source (development)
 
 ```bash
-npx -y @smithery/cli install mcp-email-service --client claude
+pnpm install
+pnpm test
+
+# build a local platform binary into mailbox-cli/packages/<platform>/bin/mailbox
+pnpm build:binary
 ```
 
-After installation, you'll need to configure your email accounts:
-```bash
-cd ~/.config/smithery/servers/mcp-email-service
-python setup.py
-```
-
-### Option 2: Manual Installation
-
-Requires Python 3.11+ and [UV](https://github.com/astral-sh/uv).
+## Configure accounts
 
 ```bash
-git clone https://github.com/leeguooooo/email-mcp-service.git
-cd email-mcp-service
-uv sync
+mkdir -p ~/.config/mailbox
+cp examples/accounts.example.json ~/.config/mailbox/auth.json
 ```
 
-### 2. Configure Email Accounts
+Config locations:
+
+- Credentials: `~/.config/mailbox/auth.json`
+- Other settings: `~/.config/mailbox/config.toml`
+
+## Common commands
 
 ```bash
-# Interactive setup
-uv run python setup.py
+# interactive mode
+mailbox
 
-# Or manually copy example config
-cp examples/accounts.example.json data/accounts.json
-# Then edit data/accounts.json with your email settings
+# list accounts
+mailbox account list --json
+
+# list unread emails (cache by default)
+mailbox email list --unread-only --limit 20 --json
+
+# show one email
+mailbox email show 123456 --account-id my_account_id --json
+
+# mark read (use --dry-run to validate first)
+mailbox email mark 123456 --read --account-id my_account_id --folder INBOX --dry-run --json
+mailbox email mark 123456 --read --account-id my_account_id --folder INBOX --json
+
+# delete
+mailbox email delete 123456 --account-id my_account_id --folder INBOX --json
 ```
 
-#### Email Configuration Guide
+### Cache + sync
 
-| Provider | Configuration Steps |
-|----------|-------------------|
-| **163 Mail** | Login to mail.163.com → Settings → Enable IMAP → Get authorization code (use code, not password) |
-| **QQ Mail** | Settings → Account → Enable IMAP → Generate authorization code |
-| **Gmail** | Enable 2FA → [Generate app password](https://myaccount.google.com/apppasswords) |
-| **Outlook** | Use email password directly |
-
-### 3. Add to MCP Client (Manual Installation Only)
-
-If you installed manually, add to your MCP client (e.g., Claude Desktop) config:
-
-```json
-{
-    "mcpServers": {
-        "mcp-email-service": {
-            "command": "/your/path/mcp-email-service/run.sh",
-            "args": []
-        }
-    }
-}
-```
-
-### 4. How to Use MCP Commands
-
-After configuration, you can use email features directly in MCP clients (like Claude Desktop):
-
-1. **Start MCP Client**: Ensure the MCP service is properly configured and running
-2. **Use in Conversations**: Request email operations directly in conversations, for example:
-   - "Show me unread emails"
-   - "Search for emails containing 'meeting'"
-   - "Mark email 123 as read"
-   - "Send email to user@example.com"
-
-3. **Command-line Client**: If you prefer not to use MCP clients, you can use the command-line client:
-   ```bash
-   # Interactive mode
-   uv run python -m clients.mailbox_client
-   
-   # Command-line mode
-   uv run python -m clients.mailbox_client list-emails --limit 10
-   ```
-
-#### Default behavior (cache, sync, version)
-
-- `list_emails` defaults to **cache** (`use_cache=true`) with `limit=100` and `folder=all`. Set `use_cache=false` to hit live IMAP, and adjust `limit` as needed.
-- Local cache is de-duplicated via unique key `(account_id, folder_id, uid)` with upsert; cache queries also use `DISTINCT` to avoid repeats.
-- Sync scheduler times are shown in **local time**; intervals support **5-minute** cadence. Use `sync_emails status` / `force` to inspect or trigger sync.
-- Service version comes from `src/config/version.py` and is exposed via the MCP `get_version` tool and the CLI “Version” menu.
-
-## Main Features
-
-> **Note**: The following commands are used within MCP clients (like Claude Desktop), not as command-line commands.
-
-### View Emails
-```bash
-list_emails                              # View unread emails
-list_emails with unread_only=false       # View all emails
-list_emails with limit=100               # View more emails
-```
-
-### Search Emails
-```bash
-search_emails with query="meeting"                 # Search emails containing "meeting"
-search_emails with query="john" search_in="from"   # Search by sender
-search_emails with date_from="2024-01-01"         # Search by date
-```
-
-### Email Operations
-```bash
-get_email_detail with email_id="123"              # View email details
-mark_emails with email_ids=["123"] mark_as="read" # Mark as read
-delete_emails with email_ids=["123"]              # Delete email
-flag_email with email_id="123" set_flag=true      # Add star
-```
-
-### Send Emails
-```bash
-send_email with to=["user@example.com"] subject="Subject" body="Content"
-reply_email with email_id="123" body="Reply content"
-```
-
-### Contact Analysis ⭐ NEW
-```bash
-analyze_contacts                                     # Analyze top contacts (last 30 days)
-analyze_contacts with days=90 limit=20               # Customize analysis period
-analyze_contacts with group_by="sender"              # Analyze only senders
-get_contact_timeline with contact_email="user@example.com"  # Get communication timeline
-```
-
-## Available Commands
-
-### Basic Email Operations
-- `list_emails` - List emails
-- `get_email_detail` - View email details
-- `search_emails` - Search emails
-- `mark_emails` - Mark as read/unread
-- `delete_emails` - Delete emails
-- `flag_email` - Star/unstar emails
-- `send_email` - Send new email
-- `reply_email` - Reply to email
-- `forward_email` - Forward email
-- `move_emails_to_folder` - Move emails
-- `list_folders` - View folders
-- `get_email_attachments` - Get attachments
-- `check_connection` - Test connections
-- `analyze_contacts` ⭐ - Analyze contact frequency
-- `get_contact_timeline` ⭐ - Get communication timeline
-
-### Monitoring System
-
-The monitoring system includes several powerful scripts:
-
-#### Core Scripts
-- `scripts/notification_service.py` - Multi-platform notification service
-- `scripts/email_monitor.py` - Main monitoring controller
-- `scripts/daily_email_digest.py` - Daily digest scheduler (local)
-- `scripts/email_monitor_api.py` - Optional HTTP API wrapper
-
-#### Usage Examples
+- Cache DB default: `~/.local/share/mailbox/email_sync.db`
+- Listing uses cache by default where possible. Add `--live` to force IMAP.
 
 ```bash
-# Test notifications
-python scripts/notification_service.py test
-
-# Run complete monitoring cycle
-python scripts/email_monitor.py run
-
-# Check system status
-python scripts/email_monitor.py status
-
-# Run daily digest once
-python scripts/daily_email_digest.py run
+mailbox sync status --json
+mailbox sync force --json
+mailbox sync init
+mailbox sync daemon
+mailbox db size --json
 ```
 
-## MCP Tool CLI
+## AI usage guide
 
-All MCP tools are now callable directly from the command line via `mcp-email-cli`.
+If you're integrating this CLI into an AI agent, start here:
 
-```bash
-# List all tools
-uv run mcp-email-cli list-tools
-
-# Show a tool's JSON schema
-uv run mcp-email-cli schema list_emails
-
-# Generic call with JSON args
-uv run mcp-email-cli call list_emails --arg limit=5 --arg unread_only=false
-uv run mcp-email-cli call send_email --args '{"to":["a@test.com"],"subject":"hi","body":"hello"}'
-
-# Or call tools as subcommands (flags are generated from the schema)
-uv run mcp-email-cli list_emails --limit 5 --no-unread-only
-uv run mcp-email-cli mark_emails --email-ids 1 2 --mark-as read
-```
-
-For complex parameters (e.g., `email_accounts`, nested objects), prefer the `call` form with a JSON object.
-
-## Command-line Mailbox Client
-
-A standalone CLI lives under `clients/mailbox_client`, allowing you to browse emails across all configured accounts without launching an MCP client.
-
-### Interactive Mode (Recommended for beginners)
-```bash
-# Start interactive mode (like setup.py)
-uv run python -m clients.mailbox_client
-```
-
-Interactive menu now covers: list/search emails, sync status/force sync, health, version, and DB maintenance (vacuum/clear cache). Listing defaults to cache with limit 100; pass `--limit` to expand or `--use-cache false` to hit live IMAP.
-
-### Command-line Mode (For scripting)
-```bash
-uv run python -m clients.mailbox_client list-accounts
-uv run python -m clients.mailbox_client list-emails --limit 20
-uv run python -m clients.mailbox_client show-email 123456 --account-id my_account
-```
-
-Each command accepts `--json` for machine-readable output. See [clients/mailbox_client/README.md](clients/mailbox_client/README.md) for more details.
-
-#### Supported Notification Platforms
-- **Feishu/Lark** - Rich card notifications with interactive elements
-- **DingTalk** - Markdown formatted messages with @mentions
-- **WeChat Work** - Styled messages with color coding
-- **Slack** - Block-based rich formatting
-- **Custom Webhooks** - Flexible JSON payload support
-
-## Troubleshooting
-
-### Basic Email Issues
-1. **Login Failed**: 163/QQ Mail use authorization codes, Gmail uses app passwords
-2. **Can't Find Emails**: Default shows unread only, use `unread_only=false`
-3. **Connection Timeout**: Check network and firewall settings
-4. **Duplicates or stale cache**: Cache uses unique key `(account_id, folder_id, uid)` with upsert; if DB is corrupted, remove `data/email_sync.db` and re-sync. Use `sync_emails status` to confirm scheduler (local time, 5-minute cadence supported).
-
-### Automation Issues
-5. **AI Summary/Classification Failed**: Falls back to rule-based classification or skips summary
-6. **Webhook Not Working**: Verify webhook URL and test with `python scripts/test_lark_webhook.py`
-7. **Script Permission Denied**: Run `chmod +x scripts/*.py` to make scripts executable
-8. **No Notifications**: Check notification config and test with `python scripts/notification_service.py test`
-
-### Quick Diagnostics
-```bash
-# Check system status
-python scripts/email_monitor.py status
-
-# Run a full monitoring cycle
-python scripts/email_monitor.py run
-
-# Run a daily digest once
-python scripts/daily_email_digest.py run
-
-# View logs
-tail -f email_monitor.log
-
-# Check environment variables
-env | grep -E "(FEISHU|OPENAI|TELEGRAM|API_SECRET)"
-```
-
-## Project Structure
-
-```
-mcp-email-service/
-├── data/                       # Runtime data directory (auto-created)
-│   ├── email_sync.db          # Email synchronization database
-│   ├── sync_config.json       # Sync configuration
-│   ├── logs/                  # Log files
-│   ├── tmp/                   # Temporary files
-│   └── attachments/           # Downloaded attachments
-├── src/                       # Source code
-│   ├── config/               # Configuration management
-│   │   └── paths.py          # Centralized path configuration
-│   ├── operations/           # Email operations
-│   ├── background/           # Background sync scheduler
-│   └── ...
-├── tests/                     # Test suite (71/72 passing)
-├── docs/                      # Documentation
-│   ├── guides/               # User guides
-│   └── archive/              # Historical documents
-├── scripts/                   # Utility scripts
-├── config_templates/         # Configuration examples
-├── clients/                  # Standalone clients and tooling
-│   └── mailbox_client/       # Command-line mailbox browser
-└── accounts.json             # Email account configuration (user-created)
-```
-
-### Key Features
-
-- **Auto-start Background Sync**: Synchronization starts automatically with MCP server
-- **Centralized Data Management**: All runtime data in `data/` directory
-- **UID-based Operations**: Stable email identification across operations
-- **Smart Caching**: 100-500x faster than live IMAP queries
-- **Multi-account Support**: Manage multiple email accounts with proper isolation
-- **Performance Optimized**: Shared connections for batch operations (5x faster)
-- **Well Tested**: 71/72 tests passing, ~65% code coverage
-
-## Documentation
-
-### Quick Start Guides
-- **[docs/guides/EMAIL_TRANSLATE_WORKFLOW_GUIDE.md](docs/guides/EMAIL_TRANSLATE_WORKFLOW_GUIDE.md)** - Email translation & summarization workflow
-- **[docs/guides/HTTP_API_QUICK_START.md](docs/guides/HTTP_API_QUICK_START.md)** - HTTP API quick start
-- **[docs/guides/LARK_SETUP_GUIDE.md](docs/guides/LARK_SETUP_GUIDE.md)** - Feishu/Lark webhook setup
-
-### Deployment & Security
-- **[docs/guides/FINAL_DEPLOYMENT_CHECKLIST.md](docs/guides/FINAL_DEPLOYMENT_CHECKLIST.md)** - Deployment checklist
-- **[docs/guides/PRODUCTION_DEPLOYMENT_GUIDE.md](docs/guides/PRODUCTION_DEPLOYMENT_GUIDE.md)** - Production deployment guide
-- **[docs/guides/SECURITY_SETUP_GUIDE.md](docs/guides/SECURITY_SETUP_GUIDE.md)** - Security configuration
-
-### Technical Documentation
-- **[docs/README.md](docs/README.md)** - Complete documentation index
-- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System architecture and design
-- **[docs/database_design.md](docs/database_design.md)** - Database schema and design
-- **[config_templates/](config_templates/)** - Configuration templates and examples
-- **[data/README.md](data/README.md)** - Data directory usage guide
-
-## Support This Project
-
-If you find this project helpful, please consider:
-
-- **Star this repository** to show your support
-- **Report bugs** or suggest features via [Issues](https://github.com/leeguooooo/email-mcp-service/issues)
-- **Contribute** code or documentation via [Pull Requests](https://github.com/leeguooooo/email-mcp-service/pulls)
-- **Sponsor** the development via [GitHub Sponsors](https://github.com/sponsors/leeguooooo)
-
-### Support via WeChat Pay / Alipay
-
-If you'd like to support this project, you can use WeChat Pay or Alipay:
-
-<div align="center">
-  <img src=".github/wechatpay.JPG" alt="WeChat Pay QR Code" width="300"/>
-  <img src=".github/alipay.JPG" alt="Alipay QR Code" width="300"/>
-  <p><i>Scan to support via WeChat Pay or Alipay</i></p>
-</div>
-
-Your support helps maintain and improve this project! Thank you!
-
-## Contributing
-
-We welcome contributions! Please feel free to submit issues and pull requests.
-
-### Development Setup
-```bash
-# Clone the repository
-git clone https://github.com/leeguooooo/email-mcp-service.git
-cd email-mcp-service
-
-# Install dependencies (including dev tools)
-uv sync --extra dev
-
-# Run tests
-uv run pytest
-
-# Set up development environment
-cp config_templates/env.example .env
-# Edit .env with your configuration
-```
-
-### Running Tests
-```bash
-# Run all tests
-uv run pytest
-
-# Run specific test file
-uv run pytest tests/test_mcp_tools.py
-
-# Run with coverage
-uv run pytest --cov=src --cov-report=html
-```
-
-### Code Quality
-
-**Option 1: Install dev dependencies** (recommended)
-```bash
-# Install with dev extras (includes black, ruff, mypy)
-uv sync --extra dev
-
-# Then run tools
-uv run black src/ scripts/ tests/
-uv run ruff check src/ scripts/ tests/
-uv run mypy src/
-```
-
-**Option 2: Use uv tool** (no installation needed)
-```bash
-# Format code
-uvx black src/ scripts/ tests/
-
-# Lint code
-uvx ruff check src/ scripts/ tests/
-
-# Type check
-uvx mypy src/
-```
-
-## Features Roadmap
-
-- [x] Multi-account email management
-- [x] AI-assisted classification & summaries
-- [x] Email translation & summarization (OpenAI)
-- [x] Multi-platform notifications
-- [x] Local scheduled digest/monitoring
-- [x] Production-ready error handling
-- [ ] Email auto-reply with AI
-- [ ] Smart email categorization
-- [ ] Advanced analytics dashboard
-- [ ] Mobile app notifications
-
-## Security
-
-### API Key Protection
-All sensitive endpoints are protected with API key authentication. See [SECURITY_SETUP_GUIDE.md](docs/guides/SECURITY_SETUP_GUIDE.md) for details.
-
-### Environment Variables
-Never commit sensitive information. Always use environment variables:
-- `.env` files are automatically ignored by git
-- Use `.env.example` templates for documentation
-- Rotate API keys regularly
-
-### Reporting Security Issues
-Please report security vulnerabilities to the repository maintainers privately before public disclosure.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+- `docs/AI_SKILL_MAILBOX_CLI.md`
