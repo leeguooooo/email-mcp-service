@@ -55,6 +55,9 @@ mailbox email show 123456 --account-id my_account_id --json
 # 标记已读（建议先 dry-run）
 mailbox email mark 123456 --read --account-id my_account_id --folder INBOX --dry-run --json
 mailbox email mark 123456 --read --account-id my_account_id --folder INBOX --json
+
+# 连接测试
+mailbox account test-connection --json
 ```
 
 ## AI 集成说明

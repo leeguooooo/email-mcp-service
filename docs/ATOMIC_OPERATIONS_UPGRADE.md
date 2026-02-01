@@ -1,4 +1,7 @@
-# 原子操作升级 - 2025年10月
+# 原子操作升级 - 2025年10月 (Legacy)
+
+> Legacy notice: This document describes the old MCP-style tool surface.
+> The current project is a Node.js CLI (`mailbox`) with a JSON output contract.
 
 ## 🎯 升级概述
 

@@ -1,35 +1,34 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `src/` hosts the MCP entry (`__main__.py`, `main.py`), config (`config/paths.py`), tool handlers under `core/`, mail operations in `operations/`, services in `services/`, and schedulers in `background/`.
-- `scripts/` contains automation for sync/monitoring/translation (e.g., `scripts/daily_email_digest.py`); `run.sh` boots the service with uv fallback.
-- `clients/mailbox_client/` provides an optional CLI (`uv run python -m clients.mailbox_client`).
-- `tests/` stores unit and regression suites with `run_tests.py`; `docs/` holds architecture and deployment guides; `data/` is runtime-only (DBs, logs, attachments) and should stay local. Config samples live in `examples/` and `config_templates/`.
+- `packages/` hosts the Node implementation:
+  - `packages/cli/` CLI entry + command definitions
+  - `packages/core/` IMAP/SMTP + storage + account migration
+  - `packages/shared/` path resolution + JSON contract helpers
+  - `packages/workflows/` digest/monitor/inbox workflows
+- `mailbox-cli/` contains the npm launcher + platform binary packages.
+- `scripts/` contains build helpers (notably `scripts/build_binary.js`).
+- `docs/` holds CLI contract + release docs; legacy Python/MCP docs remain under `docs/archive/`.
 
 ## Build, Test, and Development Commands
-- Install dependencies: `uv sync` (uses `pyproject.toml`/`uv.lock`).
-- Run the service: `./run.sh` or `uv run python -m src.main`.
-- Configure accounts: `uv run python setup.py` or copy `examples/accounts.example.json` → `data/accounts.json`.
-- Monitoring helpers: `uv run python scripts/email_monitor.py run`, `uv run python scripts/daily_email_digest.py run`.
-- Tests: `uv run python tests/run_tests.py` or `uv run pytest tests/ --maxfail=1`.
-- Lint/format/type-check: `uv run ruff check .`, `uv run black .`, `uv run mypy src`.
+- Install dependencies: `pnpm install`
+- Run tests: `pnpm test`
+- Build local pkg binary (and copy into `mailbox-cli` platform package): `pnpm build:binary`
+- Run dev CLI: `pnpm -C packages/cli test` or `node packages/cli/bin/mailbox.js --help`
 
 ## Coding Style & Naming Conventions
-- Python 3.11+, PEP 8, 4-space indents, and type hints on new functions.
-- Modules/files use snake_case; classes PascalCase; functions/variables snake_case; constants UPPER_SNAKE.
-- Prefer small, side-effect-light helpers; keep boundaries aligned with existing `operations/`, `services/`, and `core/` layers.
-- Run ruff/black before pushing; docstring public APIs and MCP tools.
+- Node.js (JavaScript). Keep modules small and side-effect-light.
+- Prefer explicit error objects in JSON output (`success`, `error`).
+- Avoid breaking JSON contract; add fields in a forward-compatible way.
 
 ## Testing Guidelines
-- Unit tests live under `tests/test_*.py`; rely on fixtures/mocks to avoid hitting live IMAP/SMTP.
-- Add regression coverage beside the feature you touch (e.g., `test_email_lookup_fallback.py` for lookup behavior).
-- Use descriptive test names showing scenario and expectation.
-- Coverage targets: `uv run pytest --cov=src --cov-report=term-missing` when changing core logic; aim to exercise new branches.
+- Contract tests live under `packages/cli/test/` (vitest). Use `MAILBOX_TEST_MODE=1` to avoid live IMAP/SMTP.
+- Prefer schema validation (`docs/cli_json_schemas/*`) to lock minimum stable JSON shapes.
 
 ## Commit & Pull Request Guidelines
 - Follow the Conventional Commit style seen in history (`feat:`, `fix:`, `refactor:`); keep subjects ≤72 chars.
 - Include a brief body noting user-facing changes, risks, and docs updated.
-- PRs should describe context, testing performed (`uv run pytest …`), and any config migrations; attach log snippets or screenshots when relevant.
+- PRs should describe context and testing performed (`pnpm test`, `pnpm build:binary`).
 - Link issues or TODOs and request reviewers for affected areas (operations, services, scripts).
 
 ## Security & Configuration Tips

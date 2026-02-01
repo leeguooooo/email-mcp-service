@@ -2,6 +2,23 @@
   "name": "mailbox-cli",
   "version": "0.0.0",
   "description": "Mailbox CLI (binary distribution)",
+  "keywords": [
+    "mailbox",
+    "email",
+    "imap",
+    "smtp",
+    "cli",
+    "automation",
+    "agent",
+    "ai",
+    "openclaw",
+    "inbox",
+    "sync",
+    "search",
+    "attachments",
+    "digest",
+    "monitor"
+  ],
   "license": "MIT",
   "bin": {
     "mailbox": "bin/mailbox.js"

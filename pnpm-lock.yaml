@@ -62,6 +62,10 @@ importers:
       sql.js:
         specifier: ^1.13.0
         version: 1.13.0
+    devDependencies:
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9
 
   packages/shared:
     dependencies:

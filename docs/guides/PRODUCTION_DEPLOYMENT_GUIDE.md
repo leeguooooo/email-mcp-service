@@ -1,5 +1,9 @@
 # 🚀 生产环境部署指南
 
+> Legacy notice: This guide was written for the old Python scripts + HTTP API.
+> The Node rewrite ships a `mailbox` CLI via npm. Prefer `mailbox sync daemon`
+> and other CLI subcommands.
+
 基于 Leo 的 review 建议，这里是生产环境稳定运行的完整配置指南。
 
 ## 🔧 生产环境注意事项

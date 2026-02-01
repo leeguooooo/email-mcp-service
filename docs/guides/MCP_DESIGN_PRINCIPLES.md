@@ -1,4 +1,7 @@
-# MCP Email Service - 设计原则与能力定位
+# MCP Email Service - 设计原则与能力定位 (Legacy)
+
+> Legacy notice: MCP server/stdio is no longer part of this repository.
+> Keep this document only for historical reference.
 
 ## 📐 核心设计原则
 

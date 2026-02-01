@@ -3,6 +3,16 @@
 This document is written for an AI agent that is allowed to run shell commands.
 Goal: reliably read/manage emails by calling the `mailbox` CLI.
 
+## Skill Keywords (OpenClaw)
+
+Use these tags/keywords for discovery:
+
+- OpenClaw keywords (keep this list short):
+  - `mailbox`, `email`, `imap`, `smtp`, `cli`, `automation`, `openclaw`, `agent`, `sync`, `inbox`
+
+- Extended tags (npm/GitHub topics):
+  - `search`, `attachments`, `digest`, `monitor`, `ai`
+
 ## Install (npm)
 
 Install the published CLI:
@@ -22,7 +32,7 @@ This npm package ships prebuilt binaries per platform (no Python required).
 Backward compatibility:
 
 - If `auth.json` is missing but a legacy `accounts.json` exists (e.g. repo `data/accounts.json`
-  or old smithery layout), the CLI will read it and best-effort migrate to `auth.json`.
+or old legacy layout), the CLI will read it and best-effort migrate to `auth.json`.
 
 ## Output contract
 

@@ -1,6 +1,10 @@
-# 🐳 Docker 部署
+# 🐳 Docker 部署 (Legacy)
 
-本目录包含 MCP Email Service 的 Docker 配置文件。
+本目录为旧 Python/HTTP API 时代的 Docker 配置备份。
+
+Node CLI 重写后，推荐使用 npm 安装 `mailbox-cli` 并运行 `mailbox`。
+
+该目录内容暂不维护，后续可能移除。
 
 ## 📁 文件说明
 

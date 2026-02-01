@@ -10,5 +10,13 @@
     "mailparser": "^3.7.2",
     "nodemailer": "^6.9.16",
     "sql.js": "^1.13.0"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.9"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "lint": "node -e \"console.log('no lint configured')\"",
+    "format": "node -e \"console.log('no format configured')\""
   }
 }

@@ -1,4 +1,4 @@
-#+#+#+#+### Mailbox CLI
+# Mailbox CLI
 
 CLI-first email management for multi-account IMAP/SMTP with a local sync cache.
 
@@ -79,7 +79,6 @@ mailbox sync status --json
 mailbox sync force --json
 mailbox sync init
 mailbox sync daemon
-mailbox db size --json
 ```
 
 ## AI usage guide
@@ -87,3 +86,7 @@ mailbox db size --json
 If you're integrating this CLI into an AI agent, start here:
 
 - `docs/AI_SKILL_MAILBOX_CLI.md`
+
+## Contract
+
+- `docs/CLI_JSON_CONTRACT.md`

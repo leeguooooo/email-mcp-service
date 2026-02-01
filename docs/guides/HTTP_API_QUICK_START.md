@@ -1,5 +1,11 @@
 # 🚀 HTTP API 方案快速开始
 
+> Legacy notice: This document describes a Python HTTP API service that no
+> longer ships with this repository.
+>
+> The supported interface is the `mailbox` CLI (Node.js) installed via
+> `npm i -g mailbox-cli`.
+
 **推荐架构**: Python HTTP 服务 + 本地定时任务/脚本调用
 
 ## ⚡ 3 步部署

@@ -1,7 +1,7 @@
 {
-  "name": "mcp-email-service",
+  "name": "mailbox-monorepo",
   "private": true,
-  "description": "Mailbox CLI + services (Node rewrite workspace)",
+  "description": "Mailbox Node CLI monorepo (workspace)",
   "workspaces": [
     "packages/*",
     "mailbox-cli/packages/*"
