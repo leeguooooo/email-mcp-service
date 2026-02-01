@@ -62,9 +62,6 @@ __pycache__/
 *.pyd
 
 # Legacy / local-only directories
-/src/
-/tests/
-/packaging/
 /thoughts/
 /clients/desktop-app/
 
