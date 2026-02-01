@@ -47,7 +47,8 @@ class MockImapClient {
     if (!mb) throw new Error(`Mailbox not found: ${this._mailbox}`);
     const messages = mb.messages || [];
     const unseen = messages.filter((m) => !m.flags.has("\\Seen")).length;
-    return { path: this._mailbox, exists: messages.length, unseen };
+    this.mailbox = { path: this._mailbox, exists: messages.length, unseen };
+    return this.mailbox;
   }
 
   async getMailboxLock(name) {

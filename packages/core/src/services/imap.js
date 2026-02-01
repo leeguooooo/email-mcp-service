@@ -33,6 +33,28 @@ async function withImapClient(account, fn) {
   }
 }
 
+async function testConnection(account, folder) {
+  const openFolder = String(folder || "INBOX") || "INBOX";
+  return withImapClient(account, async (client) => {
+    const lock = typeof client.getMailboxLock === "function" ? await client.getMailboxLock(openFolder) : null;
+    try {
+      if (typeof client.mailboxOpen === "function") {
+        // Ensure mailbox is selected and mailbox stats are updated.
+        // eslint-disable-next-line no-await-in-loop
+        await client.mailboxOpen(openFolder);
+      }
+
+      const mb = client.mailbox || {};
+      const total = Number(mb.exists || 0);
+      const unseen = Number(mb.unseen || 0);
+      return { success: true, total_emails: total, unread_emails: unseen };
+    } finally {
+      if (lock && typeof lock.release === "function") lock.release();
+    }
+  });
+}
+
 module.exports = {
   withImapClient,
+  testConnection,
 };
