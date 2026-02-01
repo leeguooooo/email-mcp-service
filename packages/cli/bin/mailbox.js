@@ -75,7 +75,10 @@ async function _interactiveLoop() {
       }
 
       const args = _splitArgs(raw);
-      const r = spawnSync(process.execPath, [__filename, ...args], { stdio: "inherit", env: process.env });
+      // In a pkg binary, `__filename` points to a snapshot path and must NOT be
+      // passed as argv[1]. Re-invoke the binary directly.
+      const childArgs = process.pkg ? args : [__filename, ...args];
+      const r = spawnSync(process.execPath, childArgs, { stdio: "inherit", env: process.env });
       if (typeof r.status === "number" && r.status !== 0) {
         process.stdout.write(`(exit ${r.status})\n`);
       }
