@@ -1,7 +1,7 @@
 const { Command } = require("commander");
 
 const { contract } = require("@mailbox/shared");
-const { accounts, email, sync } = require("@mailbox/core");
+const { accounts, email, imap, smtp, sync } = require("@mailbox/core");
 const { digest, monitor, inbox } = require("@mailbox/workflows");
 
 function _printTextNotImplemented(label) {
@@ -47,50 +47,70 @@ async function main(argv) {
     .description("Test IMAP/SMTP connectivity")
     .option("--account-id <id>", "Specific account id/email")
     .action(async (opts) => {
-      // Minimal contract: attempt listEmails(1); SMTP verify is provider-specific.
       let result;
-      try {
-        const accId = opts.accountId || "";
-        const all = accounts.getAllAccountsResolved();
-        if (!all.success) result = all;
-        else {
-          const list = all.accounts || [];
-          const targets = accId
-            ? list.filter(
-                (a) =>
-                  String(a.id).toLowerCase() === String(accId).toLowerCase() ||
-                  String(a.email).toLowerCase() === String(accId).toLowerCase()
-              )
-            : list;
 
-          const out = [];
-          for (const a of targets) {
-            try {
-              // eslint-disable-next-line no-await-in-loop
-              const l = await email.listEmails({ limit: 1, offset: 0, unread_only: false, folder: "INBOX", account_id: a.id, use_cache: false });
-              out.push({
-                email: a.email,
-                provider: a.provider,
-                success: l.success,
-                imap: { success: l.success, total_emails: l.total_in_folder || 0, unread_emails: l.unread_count || 0 },
-                smtp: { success: true },
-              });
-            } catch (e) {
-              out.push({
-                email: a.email,
-                provider: a.provider,
-                success: false,
-                imap: { success: false },
-                smtp: { success: false },
-                error: e && e.message ? e.message : "failed",
-              });
+      try {
+        const accId = String(opts.accountId || "").trim();
+        let targets = [];
+
+        if (accId) {
+          const one = accounts.getAccountByIdOrEmail(accId);
+          if (!one.success) {
+            result = { success: false, error: one.error || `Account not found: ${accId}`, accounts: [], total_accounts: 0 };
+          } else {
+            targets = [one.account];
+          }
+        } else {
+          const all = accounts.getAllAccountsResolved();
+          if (!all.success) {
+            result = all;
+          } else {
+            targets = all.accounts || [];
+            if (!targets.length) {
+              result = { success: false, error: "No accounts configured", accounts: [], total_accounts: 0 };
             }
           }
-          result = { success: out.every((x) => x.success), accounts: out, total_accounts: out.length };
+        }
+
+        if (!result) {
+          const out = [];
+          for (const a of targets) {
+            const item = {
+              email: a.email,
+              provider: a.provider,
+              success: false,
+              imap: { success: false },
+              smtp: { success: false },
+            };
+
+            try {
+              // eslint-disable-next-line no-await-in-loop
+              const im = await imap.testConnection(a, "INBOX");
+              item.imap = { success: Boolean(im && im.success), total_emails: im.total_emails || 0, unread_emails: im.unread_emails || 0 };
+              if (im && im.error) item.imap.error = im.error;
+            } catch (e) {
+              item.imap = { success: false, error: e && e.message ? e.message : "IMAP failed" };
+            }
+
+            try {
+              // eslint-disable-next-line no-await-in-loop
+              const sm = await smtp.testConnection(a);
+              item.smtp = { success: Boolean(sm && sm.success) };
+              if (sm && sm.error) item.smtp.error = sm.error;
+            } catch (e) {
+              item.smtp = { success: false, error: e && e.message ? e.message : "SMTP failed" };
+            }
+
+            item.success = Boolean(item.imap && item.imap.success) && Boolean(item.smtp && item.smtp.success);
+            out.push(item);
+          }
+
+          result = { success: out.length > 0 && out.every((x) => x.success), accounts: out, total_accounts: out.length };
         }
       } catch (e) {
         result = { success: false, error: e && e.message ? e.message : "test failed" };
       }
+
       const rc = contract.handleJsonOrText({ result, asJson, pretty, printText: () => _printTextNotImplemented("account test-connection") });
       process.exit(rc);
     });
@@ -574,10 +594,6 @@ async function main(argv) {
 
   // Default interactive mode if no command.
   if (!parsed.argv.length) {
-    if (process.stdin.isTTY && process.stdout.isTTY) {
-      process.stdout.write("Mailbox interactive mode is not implemented yet.\n");
-      return 0;
-    }
     return contract.invalidUsage({ message: "No command provided", asJson, pretty });
   }
 

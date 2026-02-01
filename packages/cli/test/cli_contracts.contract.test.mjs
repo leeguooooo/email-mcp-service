@@ -26,6 +26,50 @@ function mailboxBin() {
 }
 
 describe("CLI JSON contract - MVP commands", () => {
+  it("account test-connection returns accounts[] with imap+smtp results", async () => {
+    const root = tmpRoot("account_test_connection");
+    fs.rmSync(root, { recursive: true, force: true });
+
+    const env = testEnv(root);
+    writeAuthJson(env.MAILBOX_CONFIG_DIR, defaultAuth());
+
+    const r = await execa("node", [mailboxBin(), "account", "test-connection", "--json"], {
+      reject: false,
+      env,
+    });
+
+    expect(r.exitCode).toBe(0);
+    const payload = JSON.parse(r.stdout);
+    expect(payload).toHaveProperty("success", true);
+    expect(payload).toHaveProperty("accounts");
+    expect(Array.isArray(payload.accounts)).toBe(true);
+    expect(payload.accounts.length).toBeGreaterThan(0);
+    expect(payload.accounts[0]).toHaveProperty("imap");
+    expect(payload.accounts[0]).toHaveProperty("smtp");
+  });
+
+  it("account test-connection fails for unknown --account-id", async () => {
+    const root = tmpRoot("account_test_connection_invalid");
+    fs.rmSync(root, { recursive: true, force: true });
+
+    const env = testEnv(root);
+    writeAuthJson(env.MAILBOX_CONFIG_DIR, defaultAuth());
+
+    const r = await execa(
+      "node",
+      [mailboxBin(), "account", "test-connection", "--account-id", "does-not-exist", "--json"],
+      {
+        reject: false,
+        env,
+      }
+    );
+
+    expect(r.exitCode).toBe(1);
+    const payload = JSON.parse(r.stdout);
+    expect(payload).toHaveProperty("success", false);
+    expect(payload).toHaveProperty("error");
+  });
+
   it("email list outputs emails array + totals", async () => {
     const root = tmpRoot("email_list");
     fs.rmSync(root, { recursive: true, force: true });
