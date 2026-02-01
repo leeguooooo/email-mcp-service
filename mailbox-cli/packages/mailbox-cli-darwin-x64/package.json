@@ -1,0 +1,13 @@
+{
+  "name": "mailbox-cli-darwin-x64",
+  "version": "0.0.0",
+  "description": "Mailbox CLI binary for darwin x64",
+  "license": "MIT",
+  "os": ["darwin"],
+  "cpu": ["x64"],
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "bin/"
+  ]
+}

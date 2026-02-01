@@ -1,0 +1,13 @@
+{
+  "name": "mailbox-cli-linux-x64-gnu",
+  "version": "0.0.0",
+  "description": "Mailbox CLI binary for linux x64 (glibc)",
+  "license": "MIT",
+  "os": ["linux"],
+  "cpu": ["x64"],
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "bin/"
+  ]
+}
