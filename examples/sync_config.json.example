@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "version": "1.0",
-    "description": "MCP Email Service Sync Configuration Example"
+    "description": "Mailbox Sync Configuration Example"
   },
   "sync": {
     "enabled": true,

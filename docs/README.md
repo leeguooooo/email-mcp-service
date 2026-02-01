@@ -1,31 +1,35 @@
-# 📚 Documentation
+# Documentation
 
-Complete documentation for MCP Email Service.
+Mailbox is now a CLI-first project.
+
+Primary docs for the Node CLI rewrite:
+
+- `docs/AI_SKILL_MAILBOX_CLI.md` (automation/agent usage)
+- `docs/CLI_JSON_CONTRACT.md` (JSON output shapes)
+- `docs/RELEASING.md` (binaries + npm distribution)
+- `docs/NODE_REWRITE_PLAN.md` (roadmap/architecture)
+
+Legacy Python/MCP docs are kept for reference only:
+
+- `docs/LEGACY_PYTHON.md`
 
 ---
 
-## 🚀 Quick Start Guides
+## Quick Start
 
-These guides will help you get started quickly:
+Start here:
 
-- **[HTTP API Quick Start](guides/HTTP_API_QUICK_START.md)** - Set up the HTTP API in minutes
-- **[Email Translation Workflow](guides/EMAIL_TRANSLATE_WORKFLOW_GUIDE.md)** - Automatically translate and summarize emails
-- **[Lark/Feishu Setup](guides/LARK_SETUP_GUIDE.md)** - Configure Lark/Feishu webhooks
+- `docs/AI_SKILL_MAILBOX_CLI.md`
+- `docs/CLI_JSON_CONTRACT.md`
+- `docs/RELEASING.md`
 
 ---
 
-## 📖 User Guides
+## Legacy Guides
 
-### Deployment & Production
-
-- **[Production Deployment Guide](guides/PRODUCTION_DEPLOYMENT_GUIDE.md)** - Best practices for production deployment
-- **[Security Setup Guide](guides/SECURITY_SETUP_GUIDE.md)** - Security configuration and best practices
-- **[Final Deployment Checklist](guides/FINAL_DEPLOYMENT_CHECKLIST.md)** - Pre-deployment checklist
-
-### Workflows & Integration
-
-- **[Translation Workflow Summary](guides/TRANSLATION_WORKFLOW_SUMMARY.md)** - Email translation workflow overview
-- **[Open Source Readiness](guides/OPEN_SOURCE_READINESS.md)** - Preparing for open source release
+The `docs/guides/` directory contains legacy guides from the old Python/MCP era
+(HTTP API, translation workflows, deployment notes). They are not maintained for
+the Node CLI rewrite.
 
 ---
 
@@ -63,12 +67,10 @@ For developers who want to contribute:
 
 ---
 
-## 📞 Support
+## Support
 
-- 🐛 **Report bugs**: [GitHub Issues](https://github.com/leeguooooo/email-mcp-service/issues)
-- 💬 **Discussions**: [GitHub Discussions](https://github.com/leeguooooo/email-mcp-service/discussions)
-- 📧 **Contact**: See [main README](../README.md) for contact information
+Open an issue in your fork/repository.
 
 ---
 
-**Last Updated**: 2025-10-17
+**Last Updated**: 2026-02-01

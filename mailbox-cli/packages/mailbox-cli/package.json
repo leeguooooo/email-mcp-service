@@ -1,0 +1,34 @@
+{
+  "name": "mailbox-cli",
+  "version": "0.0.0",
+  "description": "Mailbox CLI (binary distribution)",
+  "keywords": [
+    "mailbox",
+    "email",
+    "imap",
+    "smtp",
+    "cli",
+    "automation",
+    "agent",
+    "ai",
+    "openclaw",
+    "inbox",
+    "sync",
+    "search",
+    "attachments",
+    "digest",
+    "monitor"
+  ],
+  "license": "MIT",
+  "bin": {
+    "mailbox": "bin/mailbox.js"
+  },
+  "files": [
+    "bin/"
+  ],
+  "optionalDependencies": {
+    "mailbox-cli-darwin-arm64": "0.0.0",
+    "mailbox-cli-darwin-x64": "0.0.0",
+    "mailbox-cli-linux-x64-gnu": "0.0.0"
+  }
+}

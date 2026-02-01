@@ -219,5 +219,5 @@ tree docs/ -L 2
 
 ---
 
-**维护者**: MCP Email Service Team  
+**维护者**: Mailbox Team
 **状态**: 已完成 ✅

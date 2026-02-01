@@ -196,7 +196,7 @@ First email:
 
 ```bash
 # 使用 cron
-*/10 * * * * cd /path/to/mcp-email-service && python scripts/init_sync.py --daemon
+*/10 * * * * cd /path/to/mailbox && mailbox sync daemon
 
 # 或使用 systemd
 # 见 docs/guides/PRODUCTION_DEPLOYMENT_GUIDE.md
@@ -255,6 +255,5 @@ for account_id in ['leeguoo_qq', 'env_163', ...]:
 - ✅ 修复了 **6 个关键 Bug**
 - ✅ 保留了 **1611 封邮件** 的历史数据
 
-**缓存层现已完全可用，MCP Email Service 的性能得到了显著提升！** 🚀
-
+**缓存层现已完全可用，Mailbox 的性能得到了显著提升！**
 

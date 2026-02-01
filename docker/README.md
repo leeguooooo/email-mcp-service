@@ -1,6 +1,10 @@
-# 🐳 Docker 部署
+# 🐳 Docker 部署 (Legacy)
 
-本目录包含 MCP Email Service 的 Docker 配置文件。
+本目录为旧 Python/HTTP API 时代的 Docker 配置备份。
+
+Node CLI 重写后，推荐使用 npm 安装 `mailbox-cli` 并运行 `mailbox`。
+
+该目录内容暂不维护，后续可能移除。
 
 ## 📁 文件说明
 
@@ -14,23 +18,23 @@
 
 ```bash
 # 使用优化版本（推荐）
-docker build -f docker/Dockerfile.optimized -t mcp-email-service:latest .
+docker build -f docker/Dockerfile.optimized -t mailbox:latest .
 
 # 使用可选版本
-docker build -f docker/Dockerfile.optional -t mcp-email-service:optional .
+docker build -f docker/Dockerfile.optional -t mailbox:optional .
 ```
 
 ### 运行容器
 
 ```bash
 docker run -d \
-  --name mcp-email \
+  --name mailbox \
   -v $(pwd)/accounts.json:/app/accounts.json \
   -v $(pwd)/sync_config.json:/app/sync_config.json \
   -p 18888:18888 \
   -e OPENAI_API_KEY="your-key" \
   -e API_SECRET_KEY="your-secret" \
-  mcp-email-service:latest
+  mailbox:latest
 ```
 
 ## 📝 环境变量

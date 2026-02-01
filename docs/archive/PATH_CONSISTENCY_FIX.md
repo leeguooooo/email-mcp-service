@@ -160,13 +160,13 @@ FAILED (errors=1)
 from src.config.paths import EMAIL_SYNC_DB, SYNC_CONFIG_JSON, SYNC_HEALTH_HISTORY_JSON
 
 print(EMAIL_SYNC_DB)
-# Output: /Users/leo/github.com/mcp-email-service/data/email_sync.db
+# Output: /path/to/mailbox/data/email_sync.db
 
 print(SYNC_CONFIG_JSON)
-# Output: /Users/leo/github.com/mcp-email-service/data/sync_config.json
+# Output: /path/to/mailbox/data/sync_config.json
 
 print(SYNC_HEALTH_HISTORY_JSON)
-# Output: /Users/leo/github.com/mcp-email-service/data/sync_health_history.json
+# Output: /path/to/mailbox/data/sync_health_history.json
 ```
 
 ---
@@ -265,4 +265,3 @@ git commit -m "fix: 消除所有硬编码路径，使用集中路径配置
 **日期**：2025-10-17  
 **状态**：✅ 完成  
 **测试**：71/72 通过
-

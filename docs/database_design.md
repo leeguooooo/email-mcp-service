@@ -1,8 +1,10 @@
-# 邮件本地数据库设计方案
+# 邮件本地数据库设计方案 (Legacy)
 
 ## 概述
 
-为了提升MCP邮件服务的性能，我们将实现本地SQLite数据库来缓存邮件数据。这个设计既要支持当前的MCP工具使用，也要为未来的交互式邮箱应用做好准备。
+为了提升 Mailbox CLI 的性能，我们将实现本地 SQLite 数据库来缓存邮件数据。
+
+注：本文档源自旧实现时期，作为设计参考保留。
 
 ## 设计原则
 
@@ -175,7 +177,7 @@ CREATE TABLE sync_log (
 ### 数据库管理类
 ```python
 class EmailDatabase:
-    def __init__(self, db_path: str = "~/.mcp-email/emails.db"):
+    def __init__(self, db_path: str = "~/.local/share/mailbox/email_sync.db"):
         self.db_path = os.path.expanduser(db_path)
         self.init_database()
     
@@ -243,7 +245,7 @@ class EmailDatabase:
 
 ```python
 DATABASE_CONFIG = {
-    "db_path": "~/.mcp-email/emails.db",
+    "db_path": "~/.local/share/mailbox/email_sync.db",
     "sync_interval": 300,  # 5分钟
     "max_body_days": 7,    # 保存最近7天的邮件正文
     "max_db_size": 1024,   # MB

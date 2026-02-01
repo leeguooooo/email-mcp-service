@@ -224,7 +224,7 @@ python, fastapi, multi-account, monitoring, notifications
 ```bash
 # 1. 克隆到新目录（模拟新用户）
 cd /tmp
-git clone https://github.com/leeguooooo/email-mcp-service.git test-repo
+git clone https://github.com/leeguooooo/mailbox.git test-repo
 cd test-repo
 
 # 2. 按照 README 安装
@@ -272,5 +272,5 @@ cd .. && rm -rf test-repo
 ---
 
 **最后更新**: 2025-10-16  
-**维护者**: MCP Email Service Team  
+**维护者**: Mailbox Team
 **状态**: 生产就绪 🚀

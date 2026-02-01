@@ -1,0 +1,121 @@
+# AI Skill: Mailbox CLI
+
+This document is written for an AI agent that is allowed to run shell commands.
+Goal: reliably read/manage emails by calling the `mailbox` CLI.
+
+## Skill Keywords (OpenClaw)
+
+Use these tags/keywords for discovery:
+
+- OpenClaw keywords (keep this list short):
+  - `mailbox`, `email`, `imap`, `smtp`, `cli`, `automation`, `openclaw`, `agent`, `sync`, `inbox`
+
+- Extended tags (npm/GitHub topics):
+  - `search`, `attachments`, `digest`, `monitor`, `ai`
+
+## Install (npm)
+
+Install the published CLI:
+
+```bash
+npm install -g mailbox-cli
+mailbox --help
+```
+
+This npm package ships prebuilt binaries per platform (no Python required).
+
+## Configuration files
+
+- Credentials: `~/.config/mailbox/auth.json`
+- Other settings: `~/.config/mailbox/config.toml`
+
+Backward compatibility:
+
+- If `auth.json` is missing but a legacy `accounts.json` exists (e.g. repo `data/accounts.json`
+or old legacy layout), the CLI will read it and best-effort migrate to `auth.json`.
+
+## Output contract
+
+- When `--json` is passed, commands print a single JSON object to stdout.
+- JSON payloads include:
+  - `success: boolean`
+  - `error: string` (only when `success=false`)
+- Exit codes:
+  - `0`: success
+  - `1`: operation failed (network/auth/remote/server error)
+  - `2`: invalid CLI usage (argparse validation / missing args)
+
+For automation: always use `--json` and check both exit code and `success`.
+
+## Required safety rules for AI
+
+- Always identify the account when doing destructive operations.
+  - Use `--account-id <id>` for: `email show`, `email mark`, `email delete`, `email move`, `email flag`.
+- Prefer `--dry-run` for mark/delete when available.
+- When you only need a list, prefer cache (default) for performance.
+  - Add `--live` only when cache is stale or missing.
+
+## Common workflows
+
+### 1) Discover accounts
+
+```bash
+mailbox account list --json
+```
+
+Select an `account_id` from the output.
+
+### 2) List unread emails (fast, cache-first)
+
+```bash
+mailbox email list --unread-only --limit 20 --json
+```
+
+If you must confirm live state:
+
+```bash
+mailbox email list --unread-only --limit 20 --live --json
+```
+
+### 3) Read one email
+
+```bash
+mailbox email show <email_uid> --account-id <account_id> --json
+```
+
+### 4) Mark as read (validate first)
+
+```bash
+mailbox email mark <email_uid> --read --account-id <account_id> --folder INBOX --dry-run --json
+mailbox email mark <email_uid> --read --account-id <account_id> --folder INBOX --json
+```
+
+### 5) Delete an email
+
+```bash
+mailbox email delete <email_uid> --account-id <account_id> --folder INBOX --json
+```
+
+## Sync/cache operations
+
+```bash
+mailbox sync status --json
+mailbox sync force --json
+mailbox sync init
+
+# Foreground scheduler loop (Ctrl+C to stop)
+mailbox sync daemon
+```
+
+## Script wrappers
+
+The CLI implements workflows directly. Prefer calling the CLI subcommands
+(`digest`, `monitor`, `inbox`, `sync`) rather than invoking repo-local scripts.
+
+Examples:
+
+```bash
+mailbox digest run --dry-run
+mailbox notify stats 7
+mailbox inbox --limit 15 --text
+```

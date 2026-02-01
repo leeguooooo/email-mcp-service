@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["success", "scheduler_running", "accounts"],
+  "properties": {
+    "success": { "type": "boolean" },
+    "error": { "type": "string" },
+    "scheduler_running": { "type": "boolean" },
+    "accounts": { "type": "array" },
+    "database_size": { "type": "number" }
+  },
+  "additionalProperties": true
+}

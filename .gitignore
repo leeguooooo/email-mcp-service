@@ -55,6 +55,28 @@ yarn-error.log*
 # macOS
 .DS_Store
 
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Legacy / local-only directories
+/thoughts/
+/clients/desktop-app/
+
+# Prebuilt mailbox-cli binaries (generated)
+/mailbox-cli/packages/*/bin/
+/dist/
+
+# Node tests temp fixtures
+/packages/cli/test/.tmp/
+/packages/cli/test/.tmp_*/
+/packages/cli/test/.tmp*/
+
+# macOS
+.DS_Store
+
 # Logs
 *.log
 

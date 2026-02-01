@@ -259,8 +259,8 @@ python scripts/init_sync.py
 python -m src.operations.sync_scheduler &
 
 # 或使用 systemd
-sudo systemctl enable mcp-email-sync
-sudo systemctl start mcp-email-sync
+sudo systemctl enable mailbox-sync
+sudo systemctl start mailbox-sync
 ```
 
 ---
@@ -368,5 +368,4 @@ Failed to fetch email: unknown encoding: unknown-8bit
 ---
 
 优化完成！🎉
-
 

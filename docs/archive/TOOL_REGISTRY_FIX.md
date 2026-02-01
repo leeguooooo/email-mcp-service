@@ -224,7 +224,7 @@ class Tool:
 ./run.sh
 
 # 应该看到:
-# INFO - Starting MCP Email Service
+# INFO - Starting Mailbox (Legacy)
 # INFO - Registered tool: list_emails
 # INFO - Registered tool: send_email
 # ... (所有工具)
@@ -411,4 +411,3 @@ for tool in tools:
 **Status**: ✅ **FIXED AND VERIFIED**
 
 MCP Server 现在能够正确获取和显示所有工具！🎉
-

@@ -1,5 +1,9 @@
 # 🚀 生产环境部署指南
 
+> Legacy notice: This guide was written for the old Python scripts + HTTP API.
+> The Node rewrite ships a `mailbox` CLI via npm. Prefer `mailbox sync daemon`
+> and other CLI subcommands.
+
 基于 Leo 的 review 建议，这里是生产环境稳定运行的完整配置指南。
 
 ## 🔧 生产环境注意事项
@@ -35,25 +39,25 @@ export API_SECRET_KEY="your-secret"
 
 ```bash
 # 每 5 分钟检查邮件
-*/5 * * * * cd /path/to/mcp-email-service && uv run python scripts/email_monitor.py run
+*/5 * * * * cd /path/to/mailbox && mailbox monitor run --json
 
 # 每天 08:30 发送汇总
-30 8 * * * cd /path/to/mcp-email-service && uv run python scripts/daily_email_digest.py run
+30 8 * * * cd /path/to/mailbox && mailbox digest run --json
 ```
 
 ### 3. 脚本权限和路径
 
 ```bash
 # 确保脚本可执行
-chmod +x /Users/leo/github.com/mcp-email-service/scripts/*.py
+chmod +x /path/to/mailbox/mailbox-cli/packages/*/bin/mailbox
 
 # 验证 Python 路径
 which python
 python --version
 
 # 测试脚本执行
-cd /Users/leo/github.com/mcp-email-service
-python scripts/email_monitor.py status
+cd /path/to/mailbox
+mailbox monitor status --json
 ```
 
 ### 4. 配置文件验证
@@ -172,7 +176,7 @@ chmod 600 accounts.json
 
 ```bash
 # 手动执行脚本查看详细输出
-cd /Users/leo/github.com/mcp-email-service
+cd /path/to/mailbox
 python scripts/email_monitor.py run --verbose
 
 # 检查环境变量
