@@ -1,0 +1,18 @@
+{
+  "name": "mcp-email-service",
+  "private": true,
+  "description": "Mailbox CLI + services (Node rewrite workspace)",
+  "workspaces": [
+    "packages/*",
+    "mailbox-cli/packages/*"
+  ],
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  },
+  "scripts": {
+    "build:binary": "node scripts/build_binary.js",
+    "test": "pnpm -r --if-present test",
+    "lint": "pnpm -r --if-present lint",
+    "format": "pnpm -r --if-present format"
+  }
+}

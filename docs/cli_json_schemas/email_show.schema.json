@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["success", "id", "requested_id", "subject", "body", "attachments", "attachment_count"],
+  "properties": {
+    "success": { "type": "boolean" },
+    "error": { "type": "string" },
+    "id": { "type": "string" },
+    "requested_id": { "type": "string" },
+    "subject": { "type": "string" },
+    "body": { "type": "string" },
+    "html_body": { "type": "string" },
+    "has_html": { "type": "boolean" },
+    "attachments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["filename", "size", "content_type"],
+        "properties": {
+          "filename": { "type": "string" },
+          "size": { "type": "number" },
+          "content_type": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "attachment_count": { "type": "number" }
+  },
+  "additionalProperties": true
+}

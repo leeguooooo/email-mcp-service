@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["success", "accounts", "count"],
+  "properties": {
+    "success": { "type": "boolean" },
+    "error": { "type": "string" },
+    "accounts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "email", "provider", "imap_host", "smtp_host"],
+        "properties": {
+          "id": { "type": "string" },
+          "email": { "type": "string" },
+          "provider": { "type": "string" },
+          "description": { "type": "string" },
+          "imap_host": { "type": "string" },
+          "smtp_host": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "count": { "type": "number" }
+  },
+  "additionalProperties": true
+}
