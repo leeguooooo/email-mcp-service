@@ -18,7 +18,7 @@ prebuilt platform binaries via npm (no Python required for end users).
 ### npm (recommended)
 
 ```bash
-npm install -g mailbox-cli
+npm install -g @leeguoo/mailbox-cli
 mailbox --help
 ```
 
@@ -63,10 +63,10 @@ mailbox email show 123456 --account-id my_account_id --json
 
 # mark read (use --dry-run to validate first)
 mailbox email mark 123456 --read --account-id my_account_id --folder INBOX --dry-run --json
-mailbox email mark 123456 --read --account-id my_account_id --folder INBOX --json
+mailbox email mark 123456 --read --account-id my_account_id --folder INBOX --confirm --json
 
 # delete
-mailbox email delete 123456 --account-id my_account_id --folder INBOX --json
+mailbox email delete 123456 --account-id my_account_id --folder INBOX --confirm --json
 ```
 
 ### Cache + sync
@@ -86,6 +86,32 @@ mailbox sync daemon
 If you're integrating this CLI into an AI agent, start here:
 
 - `docs/AI_SKILL_MAILBOX_CLI.md`
+
+## OpenClaw integration
+
+This repo includes an OpenClaw skill at `skills/mailbox/SKILL.md`.
+
+OpenClaw loads skills from:
+- `<workspace>/skills`
+- `~/.openclaw/skills`
+
+To use this repo without copying files, add the repo skills directory to
+`skills.load.extraDirs` in `~/.openclaw/openclaw.json`:
+
+```json
+{
+  "skills": {
+    "load": {
+      "extraDirs": [
+        "/path/to/mcp-email-service/skills"
+      ]
+    }
+  }
+}
+```
+
+OpenClaw handles channel delivery and scheduling; mailbox returns structured
+JSON outputs and optional text summaries.
 
 ## Contract
 

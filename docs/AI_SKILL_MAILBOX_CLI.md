@@ -22,7 +22,7 @@ Use these tags/keywords for discovery:
 Install the published CLI:
 
 ```bash
-npm install -g mailbox-cli
+npm install -g @leeguoo/mailbox-cli
 mailbox --help
 ```
 
@@ -43,7 +43,8 @@ or old legacy layout), the CLI will read it and best-effort migrate to `auth.jso
 - When `--json` is passed, commands print a single JSON object to stdout.
 - JSON payloads include:
   - `success: boolean`
-  - `error: string` (only when `success=false`)
+  - `error: { code, message, detail? }` (only when `success=false`)
+  - `error_message: string` (backward-compat summary)
 - Exit codes:
   - `0`: success
   - `1`: operation failed (network/auth/remote/server error)
@@ -61,6 +62,7 @@ For automation: always use `--json` and check both exit code and `success`.
 - Always identify the account when doing destructive operations.
   - Use `--account-id <id>` for: `email show`, `email mark`, `email delete`, `email move`, `email flag`.
 - Prefer `--dry-run` for mark/delete when available.
+- Destructive operations default to dry-run unless `--confirm` is provided.
 - When you only need a list, prefer cache (default) for performance.
   - Add `--live` only when cache is stale or missing.
 
@@ -96,13 +98,13 @@ mailbox email show <email_uid> --account-id <account_id> --json
 
 ```bash
 mailbox email mark <email_uid> --read --account-id <account_id> --folder INBOX --dry-run --json
-mailbox email mark <email_uid> --read --account-id <account_id> --folder INBOX --json
+mailbox email mark <email_uid> --read --account-id <account_id> --folder INBOX --confirm --json
 ```
 
 ### 5) Delete an email
 
 ```bash
-mailbox email delete <email_uid> --account-id <account_id> --folder INBOX --json
+mailbox email delete <email_uid> --account-id <account_id> --folder INBOX --confirm --json
 ```
 
 ## Sync/cache operations

@@ -63,18 +63,20 @@ function main() {
 
   const repoRoot = path.resolve(__dirname, "..");
 
-  const platforms = [
-    "mailbox-cli-darwin-arm64",
-    "mailbox-cli-darwin-x64",
-    "mailbox-cli-linux-x64-gnu",
-  ];
-
   const launcherPkg = path.join(repoRoot, "mailbox-cli", "packages", "mailbox-cli", "package.json");
   if (!fs.existsSync(launcherPkg)) die(`Missing launcher package.json: ${launcherPkg}`);
 
+  const launcher = readJson(launcherPkg);
+  const launcherName = String(launcher.name || "mailbox-cli");
+  const scope = launcherName.includes("/") ? launcherName.split("/")[0] : "";
+
+  const baseNames = ["mailbox-cli-darwin-arm64", "mailbox-cli-darwin-x64", "mailbox-cli-linux-x64-gnu"];
+  const platforms = baseNames.map((n) => (scope ? `${scope}/${n}` : n));
+
   // Platform package versions.
-  for (const p of platforms) {
-    const pkgPath = path.join(repoRoot, "mailbox-cli", "packages", p, "package.json");
+  for (const name of platforms) {
+    const dirName = name.includes("/") ? name.split("/")[1] : name;
+    const pkgPath = path.join(repoRoot, "mailbox-cli", "packages", dirName, "package.json");
     if (!fs.existsSync(pkgPath)) die(`Missing platform package.json: ${pkgPath}`);
     setPackageVersion(pkgPath, version);
   }

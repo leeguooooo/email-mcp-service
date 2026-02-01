@@ -23,11 +23,13 @@ keywords:
 Install:
 
 ```bash
-npm install -g mailbox-cli
+npm install -g @leeguoo/mailbox-cli
 mailbox --help
 ```
 
 Automation:
 
 - Use `--json` and validate the top-level `success`/`error` fields.
+- `error` is structured: `{ code, message, detail? }`.
+- Destructive commands default to dry-run unless `--confirm` is provided.
 - Contract docs: `docs/CLI_JSON_CONTRACT.md`

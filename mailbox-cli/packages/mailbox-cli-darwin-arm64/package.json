@@ -1,8 +1,11 @@
 {
-  "name": "mailbox-cli-darwin-arm64",
+  "name": "@leeguoo/mailbox-cli-darwin-arm64",
   "version": "0.0.0",
   "description": "Mailbox CLI binary for darwin arm64",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "os": ["darwin"],
   "cpu": ["arm64"],
   "main": "index.js",

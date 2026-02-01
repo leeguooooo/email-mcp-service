@@ -19,7 +19,7 @@ This plan targets the following commands as MVP:
 
 ## Goals
 - Pure Node.js implementation (JS, not TS).
-- Zero-setup user experience: `npm i -g mailbox-cli` -> `mailbox` (no Python,
+- Zero-setup user experience: `npm i -g @leeguoo/mailbox-cli` -> `mailbox` (no Python,
   no native build/compilation on user machines).
 - OpenClaw-first usage: mailbox works cleanly as an OpenClaw skill/tool.
 - Keep current CLI JSON output contract for skill usage.
@@ -46,7 +46,7 @@ distribution model**:
 
 The difference is the **binary will be produced from the Node.js rewrite**,
 not from Python. This keeps the user experience unchanged (`npm i -g
-mailbox-cli`) and avoids native compilation at install time.
+@leeguoo/mailbox-cli`) and avoids native compilation at install time.
 
 ## OpenClaw Integration (Primary Path)
 - Mailbox is treated as an OpenClaw skill/tool.
@@ -184,9 +184,9 @@ Phase 6: Remove Python/MCP
 - Snapshot tests for CLI JSON output.
 
 ## Release Plan
-- Publish `mailbox-cli` npm package with `mailbox` bin.
+- Publish `@leeguoo/mailbox-cli` npm package with `mailbox` bin.
 - Publish platform binary packages built from the Node implementation.
-- Ensure `npm i -g mailbox-cli` works with no Python dependency and no native
+- Ensure `npm i -g @leeguoo/mailbox-cli` works with no Python dependency and no native
   compilation step on user machines.
 - Document upgrade/migration for existing users.
 

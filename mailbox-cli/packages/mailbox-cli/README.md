@@ -3,7 +3,7 @@
 Install:
 
 ```bash
-npm i -g mailbox-cli
+npm i -g @leeguoo/mailbox-cli
 mailbox --help
 ```
 

@@ -18,7 +18,7 @@ Top-level layout:
 
 Notes:
 
-- End user install: `npm i -g mailbox-cli` → `mailbox`.
+- End user install: `npm i -g @leeguoo/mailbox-cli` → `mailbox`.
 - The CLI JSON contract is documented in `docs/CLI_JSON_CONTRACT.md` and locked
   by schemas under `docs/cli_json_schemas/`.
 - Python/MCP implementation has been removed; remaining legacy docs are kept in

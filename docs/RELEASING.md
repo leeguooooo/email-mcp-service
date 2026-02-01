@@ -3,7 +3,7 @@
 This project ships:
 
 1) A standalone `mailbox` binary (built from this repo)
-2) An npm package `mailbox-cli` that installs `mailbox` (binary distribution)
+2) An npm package `@leeguoo/mailbox-cli` that installs `mailbox` (binary distribution)
 
 ## 1) Build + publish `mailbox` binaries
 
@@ -23,16 +23,16 @@ GitHub Release:
 
 Each has a matching `.sha256` file.
 
-## 2) Publish `mailbox-cli` to npm
+## 2) Publish `@leeguoo/mailbox-cli` to npm
 
 The Node project lives under `mailbox-cli/`.
 
 Publishing model:
 
-- `mailbox-cli` main package depends on platform packages:
-  - `mailbox-cli-darwin-arm64`
-  - `mailbox-cli-darwin-x64`
-  - `mailbox-cli-linux-x64-gnu`
+- `@leeguoo/mailbox-cli` main package depends on platform packages:
+  - `@leeguoo/mailbox-cli-darwin-arm64`
+  - `@leeguoo/mailbox-cli-darwin-x64`
+  - `@leeguoo/mailbox-cli-linux-x64-gnu`
 
 Each platform package bundles a `bin/mailbox` executable.
 
@@ -50,7 +50,7 @@ Flow:
 2. CI builds the `mailbox` binary on each target OS.
 3. CI injects the binary into each platform package `bin/mailbox`.
 4. CI sets `package.json` versions to `X.Y.Z` (platform packages + launcher).
-5. CI publishes platform packages first, then publishes `mailbox-cli`.
+5. CI publishes platform packages first, then publishes `@leeguoo/mailbox-cli`.
 
 Workflow:
 
@@ -65,7 +65,7 @@ Each platform package must contain:
 - `bin/mailbox` (executable)
 - `index.js` exporting `binaryPath`
 
-The launcher package `mailbox-cli` resolves the correct platform package and
+The launcher package `@leeguoo/mailbox-cli` resolves the correct platform package and
 executes `binaryPath`.
 
 ### Artifact naming convention

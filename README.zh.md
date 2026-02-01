@@ -10,8 +10,17 @@
 
 ### npm（推荐）
 
+使用 npm 安装：
+
 ```bash
 npm install -g mailbox-cli
+mailbox --help
+```
+
+使用 npm 安装（scoped）：
+
+```bash
+npm install -g @leeguoo/mailbox-cli
 mailbox --help
 ```
 
@@ -54,7 +63,7 @@ mailbox email show 123456 --account-id my_account_id --json
 
 # 标记已读（建议先 dry-run）
 mailbox email mark 123456 --read --account-id my_account_id --folder INBOX --dry-run --json
-mailbox email mark 123456 --read --account-id my_account_id --folder INBOX --json
+mailbox email mark 123456 --read --account-id my_account_id --folder INBOX --confirm --json
 
 # 连接测试
 mailbox account test-connection --json
@@ -63,3 +72,28 @@ mailbox account test-connection --json
 ## AI 集成说明
 
 - `docs/AI_SKILL_MAILBOX_CLI.md`
+
+## OpenClaw 集成
+
+本仓库包含 OpenClaw 技能：`skills/mailbox/SKILL.md`。
+
+OpenClaw 默认加载以下目录的技能：
+- `<workspace>/skills`
+- `~/.openclaw/skills`
+
+如需直接引用本仓库的技能目录，可在 `~/.openclaw/openclaw.json`
+中添加 `skills.load.extraDirs`：
+
+```json
+{
+  "skills": {
+    "load": {
+      "extraDirs": [
+        "/path/to/mcp-email-service/skills"
+      ]
+    }
+  }
+}
+```
+
+OpenClaw 负责渠道投递与定时调度；mailbox 只输出结构化 JSON 与可选摘要文本。
