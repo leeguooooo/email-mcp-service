@@ -21,7 +21,7 @@ n8n 工作流执行时报错：`python: not found`
 ```json
 {
   "command": "python",
-  "arguments": "/Users/leo/github.com/mcp-email-service/scripts/email_monitor.py run"
+  "arguments": "/path/to/mailbox/mailbox monitor run --json"
 }
 ```
 
@@ -29,7 +29,7 @@ n8n 工作流执行时报错：`python: not found`
 ```json
 {
   "command": "uv",
-  "arguments": "run python /Users/leo/github.com/mcp-email-service/scripts/email_monitor.py run"
+  "arguments": "/path/to/mailbox/mailbox monitor run --json"
 }
 ```
 
@@ -61,7 +61,7 @@ n8n 工作流执行时报错：`python: not found`
 ```json
 {
   "command": "/usr/bin/python3",
-  "arguments": "/Users/leo/github.com/mcp-email-service/scripts/email_monitor.py run"
+  "arguments": "/path/to/mailbox/mailbox monitor run --json"
 }
 ```
 

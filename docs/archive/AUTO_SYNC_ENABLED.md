@@ -72,10 +72,10 @@ def stop_background_sync():
 ```python
 async def main():
     """Main entry point for the email MCP server"""
-    logger.info("Starting MCP Email Service (Clean Architecture)...")
+logger.info("Starting Mailbox (Legacy)...")
     
     # Create server instance
-    server = Server("mcp-email-service")
+server = Server("mailbox")
     
     # Initialize MCP tools with clean architecture
     mcp_tools = MCPTools(server)
@@ -95,7 +95,7 @@ async def main():
     
     finally:
         # ✅ Ensure background sync is stopped cleanly
-        logger.info("Shutting down MCP Email Service...")
+logger.info("Shutting down Mailbox...")
         stop_background_sync()
 ```
 
@@ -216,7 +216,7 @@ Clean exit ✅
    ```bash
    # 按 Ctrl+C
    # 查看日志:
-   # ✅ "Shutting down MCP Email Service..."
+# ✅ "Shutting down Mailbox..."
    # ✅ "Background sync scheduler stopped"
    ```
 
@@ -303,5 +303,4 @@ Clean exit
 **修复日期**: 2025-10-16  
 **修复类型**: 自动化改进  
 **状态**: ✅ 已修复并验证
-
 

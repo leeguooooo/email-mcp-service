@@ -70,7 +70,7 @@ uv run python scripts/test_n8n_api.py
 |--------|-----|
 | n8n URL | `https://n8n.ifoodme.com` |
 | 飞书 Webhook | `https://open.larksuite.com/open-apis/bot/v2/hook/a56c9638-cb65-4f95-bb11-9eb19e09692a` |
-| 脚本路径 | `/Users/leo/github.com/mcp-email-service` |
+| 脚本路径 | `/path/to/mailbox` |
 | Python 路径 | 自动添加到 PYTHONPATH |
 
 ## 🔧 可选配置
@@ -121,7 +121,7 @@ $ ./setup_n8n.sh
 ⚙️  配置信息:
    n8n URL: https://n8n.ifoodme.com
    飞书 Webhook: https://open.larksuite.com/open-apis/bot/v2/hook...
-   脚本路径: /Users/leo/github.com/mcp-email-service
+脚本路径: /path/to/mailbox
 
 🔍 测试 n8n API 连接...
 ✅ n8n API 连接成功: https://n8n.ifoodme.com

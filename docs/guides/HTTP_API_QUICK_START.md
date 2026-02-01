@@ -45,10 +45,10 @@ curl -X POST http://localhost:18888/api/test-notification
 uv run python scripts/email_monitor.py run
 
 # 使用 cron 调度（每 5 分钟）
-*/5 * * * * cd /path/to/mcp-email-service && uv run python scripts/email_monitor.py run
+*/5 * * * * cd /path/to/mailbox && mailbox monitor run --json
 
 # 每天 08:30 生成汇总
-30 8 * * * cd /path/to/mcp-email-service && uv run python scripts/daily_email_digest.py run
+30 8 * * * cd /path/to/mailbox && mailbox digest run --json
 ```
 
 ## 📊 架构图
@@ -100,7 +100,7 @@ After=network.target
 [Service]
 Type=simple
 User=your-user
-WorkingDirectory=/path/to/mcp-email-service
+WorkingDirectory=/path/to/mailbox
 Environment="PATH=/path/to/.venv/bin"
 ExecStart=/path/to/.venv/bin/uvicorn scripts.email_monitor_api:app --host 0.0.0.0 --port 18888
 Restart=always

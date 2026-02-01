@@ -177,7 +177,7 @@ CREATE TABLE sync_log (
 ### 数据库管理类
 ```python
 class EmailDatabase:
-    def __init__(self, db_path: str = "~/.mcp-email/emails.db"):
+    def __init__(self, db_path: str = "~/.local/share/mailbox/email_sync.db"):
         self.db_path = os.path.expanduser(db_path)
         self.init_database()
     
@@ -245,7 +245,7 @@ class EmailDatabase:
 
 ```python
 DATABASE_CONFIG = {
-    "db_path": "~/.mcp-email/emails.db",
+    "db_path": "~/.local/share/mailbox/email_sync.db",
     "sync_interval": 300,  # 5分钟
     "max_body_days": 7,    # 保存最近7天的邮件正文
     "max_db_size": 1024,   # MB

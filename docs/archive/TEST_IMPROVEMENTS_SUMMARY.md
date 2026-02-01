@@ -208,7 +208,7 @@
 
 ```bash
 # 运行所有测试
-cd /Users/leo/github.com/mcp-email-service
+cd /path/to/mailbox
 python3 -m unittest discover tests/ -v
 
 # 运行特定测试文件
@@ -297,4 +297,3 @@ FAILED (errors=1)
 ---
 
 **下一步**：继续扩展测试覆盖，目标达到 75%，确保系统的稳定性和可靠性。
-

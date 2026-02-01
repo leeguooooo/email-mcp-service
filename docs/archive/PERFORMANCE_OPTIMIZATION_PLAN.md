@@ -306,8 +306,8 @@ python scripts/init_sync.py
 python -m src.operations.sync_scheduler &
 
 # 或使用 systemd (推荐)
-sudo systemctl enable mcp-email-sync
-sudo systemctl start mcp-email-sync
+sudo systemctl enable mailbox-sync
+sudo systemctl start mailbox-sync
 ```
 
 **验证同步数据**：
@@ -545,4 +545,3 @@ python -m src.operations.sync_scheduler &
 ---
 
 准备好开始了吗？我可以帮你实施 Phase 1！
-
