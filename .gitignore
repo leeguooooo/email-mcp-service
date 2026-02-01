@@ -1,17 +1,4 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-ENV/
-.venv
-.env
-
 # Distribution / packaging
-.Python
 build/
 develop-eggs/
 dist/
@@ -43,23 +30,30 @@ htmlcov/
 .dmypy.json
 dmypy.json
 
-# UV
-.uv/
-
 # Node
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
 # macOS
 .DS_Store
-
-# Python bytecode
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
 
 # Legacy / local-only directories
 /thoughts/
@@ -74,16 +68,8 @@ __pycache__/
 /packages/cli/test/.tmp_*/
 /packages/cli/test/.tmp*/
 
-# macOS
-.DS_Store
-
 # Logs
 *.log
-
-# Environment variables
-.env
-.env.local
-.env.*.local
 
 # Editor directories and files
 *.swp
@@ -123,7 +109,5 @@ email_sync.db*
 *.backup
 /tmp/
 CLAUDE.md
-__pycache__/
-*.pyc
 COMPETITIVE_ANALYSIS.md
 clients/desktop-app/release/
