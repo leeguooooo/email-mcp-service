@@ -440,7 +440,13 @@ async function markEmails({ email_ids, mark_as, folder = "INBOX", account_id = "
 async function _findTrashFolder(client, preferredName) {
   const pref = String(preferredName || "").trim();
   let fallback = pref || "Trash";
-  for await (const mb of client.list()) {
+  const listResult = await client.list();
+  const iterate = listResult && typeof listResult[Symbol.asyncIterator] === "function"
+    ? listResult
+    : Array.isArray(listResult)
+      ? listResult
+      : [];
+  for await (const mb of iterate) {
     const pathName = mb.path || mb.name || "";
     const special = String(mb.specialUse || "");
     if (special && special.toLowerCase().includes("trash")) return pathName;

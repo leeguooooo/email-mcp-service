@@ -218,6 +218,22 @@ function createMockImapClient(account) {
   return new MockImapClient(account);
 }
 
+function createMockImapClientArrayList(account) {
+  const client = createMockImapClient(account);
+  const originalList = client.list.bind(client);
+
+  client.list = async () => {
+    const out = [];
+    for await (const item of originalList()) {
+      out.push(item);
+    }
+    return out;
+  };
+
+  return client;
+}
+
 module.exports = {
   createMockImapClient,
+  createMockImapClientArrayList,
 };
