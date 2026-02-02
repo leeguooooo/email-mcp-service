@@ -55,6 +55,7 @@ jobs:
     runs-on: ubuntu-22.04
     needs: build-binary
     permissions:
+      id-token: write
       contents: read
     steps:
       - uses: actions/checkout@v4
@@ -63,6 +64,13 @@ jobs:
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
+
+      - name: Ensure npm supports OIDC publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm i -g npm@^11.5.1
+          npm --version
 
       - uses: pnpm/action-setup@v4
         with:
@@ -101,8 +109,6 @@ jobs:
           node scripts/set_release_version.js "$VERSION"
 
       - name: Publish platform packages
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -111,6 +117,4 @@ jobs:
           npm publish --access public "mailbox-cli/packages/mailbox-cli-linux-x64-gnu"
 
       - name: Publish launcher package
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --access public mailbox-cli/packages/mailbox-cli
