@@ -71,7 +71,7 @@ Suggested commands:
   - 1 operation failed
   - 2 invalid usage
 - JSON output includes `success` and `error` fields.
-- Default interactive mode when no command is given.
+- No interactive mode; `mailbox` requires a command (use `--help`).
 
 ### Paths
 Use XDG defaults:

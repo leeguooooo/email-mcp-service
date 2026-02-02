@@ -49,8 +49,8 @@ Config locations:
 ## Common commands
 
 ```bash
-# interactive mode
-mailbox
+# CLI help
+mailbox --help
 
 # list accounts
 mailbox account list --json
