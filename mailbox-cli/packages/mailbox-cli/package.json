@@ -20,6 +20,10 @@
     "monitor"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/leeguooooo/email-mcp-service"
+  },
   "publishConfig": {
     "access": "public"
   },
