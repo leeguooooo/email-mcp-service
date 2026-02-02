@@ -81,6 +81,18 @@ OpenClaw 默认加载以下目录的技能：
 - `<workspace>/skills`
 - `~/.openclaw/skills`
 
+快速链接脚本（将仓库 skill 软链到 `~/.openclaw/skills`）：
+
+```bash
+./scripts/link_openclaw_skill.sh
+```
+
+如需覆盖已有链接：
+
+```bash
+./scripts/link_openclaw_skill.sh --force
+```
+
 如需直接引用本仓库的技能目录，可在 `~/.openclaw/openclaw.json`
 中添加 `skills.load.extraDirs`：
 
@@ -97,3 +109,10 @@ OpenClaw 默认加载以下目录的技能：
 ```
 
 OpenClaw 负责渠道投递与定时调度；mailbox 只输出结构化 JSON 与可选摘要文本。
+
+验证 OpenClaw 是否加载成功：
+
+```bash
+openclaw skills list --eligible
+openclaw skills check
+```

@@ -95,6 +95,18 @@ OpenClaw loads skills from:
 - `<workspace>/skills`
 - `~/.openclaw/skills`
 
+Quick link helper (symlink into `~/.openclaw/skills`):
+
+```bash
+./scripts/link_openclaw_skill.sh
+```
+
+Force replace an existing link:
+
+```bash
+./scripts/link_openclaw_skill.sh --force
+```
+
 To use this repo without copying files, add the repo skills directory to
 `skills.load.extraDirs` in `~/.openclaw/openclaw.json`:
 
@@ -112,6 +124,13 @@ To use this repo without copying files, add the repo skills directory to
 
 OpenClaw handles channel delivery and scheduling; mailbox returns structured
 JSON outputs and optional text summaries.
+
+Verify OpenClaw picked up the skill:
+
+```bash
+openclaw skills list --eligible
+openclaw skills check
+```
 
 ## Contract
 
