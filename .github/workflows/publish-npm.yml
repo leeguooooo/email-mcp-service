@@ -21,7 +21,7 @@ jobs:
           - platform: darwin-arm64
             runner: macos-14
           - platform: darwin-x64
-            runner: macos-13
+            runner: macos-15-intel
           - platform: linux-x64-gnu
             runner: ubuntu-22.04
     steps:

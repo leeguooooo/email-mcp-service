@@ -12,7 +12,17 @@ importers:
         specifier: ^5.8.1
         version: 5.8.1
 
-  mailbox-cli/packages/mailbox-cli: {}
+  mailbox-cli/packages/mailbox-cli:
+    optionalDependencies:
+      '@leeguoo/mailbox-cli-darwin-arm64':
+        specifier: 0.0.0
+        version: link:../mailbox-cli-darwin-arm64
+      '@leeguoo/mailbox-cli-darwin-x64':
+        specifier: 0.0.0
+        version: link:../mailbox-cli-darwin-x64
+      '@leeguoo/mailbox-cli-linux-x64-gnu':
+        specifier: 0.0.0
+        version: link:../mailbox-cli-linux-x64-gnu
 
   mailbox-cli/packages/mailbox-cli-darwin-arm64: {}
 
