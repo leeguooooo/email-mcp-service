@@ -5,9 +5,29 @@ This project ships:
 1) A standalone `mailbox` binary (built from this repo)
 2) An npm package `@leeguoo/mailbox-cli` that installs `mailbox` (binary distribution)
 
+## Automated release (recommended)
+
+Releases are created automatically from `main` using semantic-release.
+
+Requirements:
+- Conventional Commit messages (`feat:`, `fix:`, etc.)
+- Do **not** manually bump package versions in `mailbox-cli/packages/*`
+  (keep them at `0.0.0`). The CI publish job sets real versions at release
+  time via `scripts/set_release_version.js`.
+
+Flow:
+1. Merge to `main` with a `feat:` or `fix:` commit.
+2. The `semantic-release` workflow computes the next version and pushes a tag
+   like `v2.0.6`.
+3. Tag push triggers `release-binaries` and `publish-npm`.
+
+If no release-worthy commits are found, semantic-release exits without tagging.
+
+## Manual release (fallback)
+
 ## 1) Build + publish `mailbox` binaries
 
-Create a tag:
+Create a tag (only if you are not using semantic-release):
 
 ```bash
 git tag vX.Y.Z

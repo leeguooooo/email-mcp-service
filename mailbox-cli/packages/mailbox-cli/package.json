@@ -1,6 +1,6 @@
 {
   "name": "@leeguoo/mailbox-cli",
-  "version": "2.0.5",
+  "version": "0.0.0",
   "description": "Mailbox CLI (binary distribution)",
   "keywords": [
     "mailbox",
@@ -34,8 +34,8 @@
     "bin/"
   ],
   "optionalDependencies": {
-    "@leeguoo/mailbox-cli-darwin-arm64": "2.0.5",
-    "@leeguoo/mailbox-cli-darwin-x64": "2.0.5",
-    "@leeguoo/mailbox-cli-linux-x64-gnu": "2.0.5"
+    "@leeguoo/mailbox-cli-darwin-arm64": "0.0.0",
+    "@leeguoo/mailbox-cli-darwin-x64": "0.0.0",
+    "@leeguoo/mailbox-cli-linux-x64-gnu": "0.0.0"
   }
 }
