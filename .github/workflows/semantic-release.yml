@@ -32,5 +32,7 @@ jobs:
 
       - name: Run semantic-release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Use a PAT to allow tag-triggered workflows (publish-npm/release-binaries).
+          # FALLBACK: GITHUB_TOKEN (note: pushes from GITHUB_TOKEN won't trigger workflows).
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
         run: pnpm release

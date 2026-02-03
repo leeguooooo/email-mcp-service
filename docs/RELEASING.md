@@ -14,6 +14,8 @@ Requirements:
 - Do **not** manually bump package versions in `mailbox-cli/packages/*`
   (keep them at `0.0.0`). The CI publish job sets real versions at release
   time via `scripts/set_release_version.js`.
+- Set repository secret `RELEASE_TOKEN` (a PAT with `repo` + `workflow` scopes)
+  so tag pushes can trigger `publish-npm` and `release-binaries`.
 
 Flow:
 1. Merge to `main` with a `feat:` or `fix:` commit.
