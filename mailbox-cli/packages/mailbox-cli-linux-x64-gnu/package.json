@@ -1,6 +1,6 @@
 {
   "name": "@leeguoo/mailbox-cli-linux-x64-gnu",
-  "version": "0.0.0",
+  "version": "2.0.5",
   "description": "Mailbox CLI binary for linux x64 (glibc)",
   "license": "MIT",
   "repository": {
@@ -10,8 +10,12 @@
   "publishConfig": {
     "access": "public"
   },
-  "os": ["linux"],
-  "cpu": ["x64"],
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
   "main": "index.js",
   "files": [
     "index.js",

@@ -10,8 +10,9 @@ function _printTextNotImplemented(label) {
 
 async function main(argv) {
   const parsed = contract.parseGlobalFlags(argv);
-  const asJson = parsed.asJson;
+  let asJson = parsed.asJson;
   const pretty = parsed.pretty;
+  if (!asJson && !process.stdout.isTTY) asJson = true;
 
   const program = new Command();
   program.name("mailbox");
@@ -124,6 +125,8 @@ async function main(argv) {
     .option("--offset <n>", "Offset", "0")
     .option("--unread-only", "Only unread")
     .option("--account-id <id>", "Account id/email")
+    .option("--date-from <s>", "Filter from date (YYYY-MM-DD or ISO)")
+    .option("--date-to <s>", "Filter to date (YYYY-MM-DD or ISO)")
     .option("--folder <name>", "Folder", "all")
     .option("--live", "Force live IMAP (no cache)")
     .action(async (opts) => {
@@ -133,6 +136,8 @@ async function main(argv) {
         unread_only: Boolean(opts.unreadOnly),
         folder: opts.folder,
         account_id: opts.accountId || "",
+        date_from: opts.dateFrom || "",
+        date_to: opts.dateTo || "",
         use_cache: !Boolean(opts.live),
       });
       // Add contract parity fields.
@@ -141,6 +146,8 @@ async function main(argv) {
       result.unread_only = Boolean(opts.unreadOnly);
       result.folder = opts.folder;
       result.use_cache = !Boolean(opts.live);
+      if (opts.dateFrom) result.date_from = opts.dateFrom;
+      if (opts.dateTo) result.date_to = opts.dateTo;
       if (opts.accountId) result.account_id = opts.accountId;
 
       const rc = contract.handleJsonOrText({ result, asJson, pretty, printText: () => _printTextNotImplemented("email list") });
@@ -179,8 +186,29 @@ async function main(argv) {
     .argument("<email_id>")
     .option("--account-id <id>")
     .option("--folder <name>", "Folder", "INBOX")
+    .option("--preview", "Return a short body preview")
+    .option("--body-max-len <n>", "Max body length (characters)")
+    .option("--html-max-len <n>", "Max HTML length (characters)")
+    .option("--no-html", "Exclude HTML body")
+    .option("--strip-urls", "Remove URLs from body text")
     .action(async (emailId, opts) => {
-      const result = await email.showEmail({ email_id: emailId, folder: opts.folder, account_id: opts.accountId || "" });
+      const bodyMaxRaw = opts.bodyMaxLen != null ? Number(opts.bodyMaxLen) : null;
+      const htmlMaxRaw = opts.htmlMaxLen != null ? Number(opts.htmlMaxLen) : null;
+      let bodyMax = Number.isFinite(bodyMaxRaw) ? Math.max(0, bodyMaxRaw) : 0;
+      let htmlMax = Number.isFinite(htmlMaxRaw) ? Math.max(0, htmlMaxRaw) : 0;
+      if (opts.preview) {
+        if (!bodyMax) bodyMax = 400;
+        if (!htmlMax && opts.html !== false) htmlMax = 2000;
+      }
+      const result = await email.showEmail({
+        email_id: emailId,
+        folder: opts.folder,
+        account_id: opts.accountId || "",
+        body_max_len: bodyMax,
+        html_max_len: htmlMax,
+        include_html: opts.html !== false,
+        strip_urls: Boolean(opts.stripUrls),
+      });
       const rc = contract.handleJsonOrText({ result, asJson, pretty, printText: () => _printTextNotImplemented("email show") });
       process.exit(rc);
     });
@@ -193,6 +221,7 @@ async function main(argv) {
     .option("--unread", "Mark as unread")
     .option("--account-id <id>")
     .option("--folder <name>", "Folder", "INBOX")
+    .option("--confirm", "Apply changes (default: dry-run)")
     .option("--dry-run")
     .action(async (ids, opts) => {
       const read = Boolean(opts.read);
@@ -202,14 +231,19 @@ async function main(argv) {
         process.exit(rc);
       }
 
+      const dryRun = Boolean(opts.dryRun) || !Boolean(opts.confirm);
       const mark_as = unread ? "unread" : "read";
       const result = await email.markEmails({
         email_ids: ids,
         mark_as,
         folder: opts.folder,
         account_id: opts.accountId || "",
-        dry_run: Boolean(opts.dryRun),
+        dry_run: dryRun,
       });
+      if (dryRun && !opts.dryRun && result && typeof result === "object") {
+        result.confirmation_required = true;
+        result.confirmation_hint = "Re-run with --confirm to apply changes";
+      }
       const rc = contract.handleJsonOrText({ result, asJson, pretty, printText: () => _printTextNotImplemented("email mark") });
       process.exit(rc);
     });
@@ -222,16 +256,22 @@ async function main(argv) {
     .option("--folder <name>", "Folder", "INBOX")
     .option("--permanent")
     .option("--trash-folder <name>", "Trash folder", "Trash")
+    .option("--confirm", "Apply changes (default: dry-run)")
     .option("--dry-run")
     .action(async (ids, opts) => {
+      const dryRun = Boolean(opts.dryRun) || !Boolean(opts.confirm);
       const result = await email.deleteEmails({
         email_ids: ids,
         folder: opts.folder,
         permanent: Boolean(opts.permanent),
         trash_folder: opts.trashFolder,
         account_id: opts.accountId || "",
-        dry_run: Boolean(opts.dryRun),
+        dry_run: dryRun,
       });
+      if (dryRun && !opts.dryRun && result && typeof result === "object") {
+        result.confirmation_required = true;
+        result.confirmation_hint = "Re-run with --confirm to apply changes";
+      }
       const rc = contract.handleJsonOrText({ result, asJson, pretty, printText: () => _printTextNotImplemented("email delete") });
       process.exit(rc);
     });
@@ -369,6 +409,8 @@ async function main(argv) {
     .option("--unset")
     .option("--flag-type <t>", "Flag type", "flagged")
     .option("--folder <name>", "Folder", "INBOX")
+    .option("--confirm", "Apply changes (default: dry-run)")
+    .option("--dry-run")
     .action(async (emailId, opts) => {
       const set = Boolean(opts.set);
       const unset = Boolean(opts.unset);
@@ -378,13 +420,19 @@ async function main(argv) {
       }
 
       const setFlag = set;
+      const dryRun = Boolean(opts.dryRun) || !Boolean(opts.confirm);
       const result = await email.flagEmail({
         email_id: emailId,
         set_flag: setFlag,
         flag_type: opts.flagType,
         folder: opts.folder,
         account_id: opts.accountId,
+        dry_run: dryRun,
       });
+      if (dryRun && !opts.dryRun && result && typeof result === "object") {
+        result.confirmation_required = true;
+        result.confirmation_hint = "Re-run with --confirm to apply changes";
+      }
       const rc = contract.handleJsonOrText({ result, asJson, pretty, printText: () => _printTextNotImplemented("email flag") });
       process.exit(rc);
     });
@@ -396,13 +444,21 @@ async function main(argv) {
     .requiredOption("--target-folder <name>")
     .option("--source-folder <name>", "Source folder", "INBOX")
     .requiredOption("--account-id <id>")
+    .option("--confirm", "Apply changes (default: dry-run)")
+    .option("--dry-run")
     .action(async (ids, opts) => {
+      const dryRun = Boolean(opts.dryRun) || !Boolean(opts.confirm);
       const result = await email.moveEmails({
         email_ids: ids,
         target_folder: opts.targetFolder,
         source_folder: opts.sourceFolder,
         account_id: opts.accountId,
+        dry_run: dryRun,
       });
+      if (dryRun && !opts.dryRun && result && typeof result === "object") {
+        result.confirmation_required = true;
+        result.confirmation_hint = "Re-run with --confirm to apply changes";
+      }
       const rc = contract.handleJsonOrText({ result, asJson, pretty, printText: () => _printTextNotImplemented("email move") });
       process.exit(rc);
     });
@@ -601,6 +657,15 @@ async function main(argv) {
     await program.parseAsync(["node", "mailbox", ...parsed.argv]);
     return 0;
   } catch (err) {
+    if (
+      err &&
+      (err.code === "commander.help" ||
+        err.code === "commander.helpDisplayed" ||
+        err.code === "commander.version") &&
+      err.exitCode === 0
+    ) {
+      return 0;
+    }
     // commander throws on invalid usage (exitOverride).
     const message = err && err.message ? err.message : "Invalid usage";
     return contract.invalidUsage({ message, asJson, pretty });

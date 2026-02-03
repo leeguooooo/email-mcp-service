@@ -4,7 +4,21 @@
   "required": ["success", "scheduler_running", "accounts"],
   "properties": {
     "success": { "type": "boolean" },
-    "error": { "type": "string" },
+    "error": {
+    "oneOf": [
+      { "type": "string" },
+      {
+        "type": "object",
+        "required": ["code", "message"],
+        "properties": {
+          "code": { "type": "string" },
+          "message": { "type": "string" },
+          "detail": {}
+        },
+        "additionalProperties": true
+      }
+    ]
+  },
     "scheduler_running": { "type": "boolean" },
     "accounts": { "type": "array" },
     "database_size": { "type": "number" }

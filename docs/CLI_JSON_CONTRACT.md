@@ -7,6 +7,7 @@ Captured date: 2026-02-01
 
 ## Global Contract
 - `--json` outputs a single JSON object to stdout.
+- When stdout is non-TTY, JSON output is used by default (even without `--json`).
 - `success: boolean` is always present.
 - `error: string` appears when `success=false`.
 - Exit codes: `0` success, `1` operation failed, `2` invalid usage.
@@ -55,7 +56,7 @@ test result without `accounts`/`total_accounts`, but still includes `success`,
 
 ### email list
 CLI adds fields: `limit`, `offset`, `unread_only`, `folder`, `use_cache`,
-and `account_id` when provided.
+and `account_id` when provided. Optional filters: `date_from`, `date_to`.
 
 Common shape (superset):
 ```json
@@ -93,6 +94,10 @@ Common shape (superset):
 Notes:
 - Fields vary by source (cache vs live, single vs multi-account).
 - Each email may include `source` (e.g. `cache_sync_db` or `imap_fetch`).
+- When multiple accounts are merged, `limit`/`offset` apply to the merged list
+  after sorting by date.
+- `accounts_info[].fetched` is the count returned in the merged list.
+- `accounts_info[].fetched_raw` is the count fetched per account before merge.
 
 ### email search
 Two main variants (optimized vs fallback). Keep a union of fields:
@@ -148,6 +153,8 @@ Two main variants (optimized vs fallback). Keep a union of fields:
   "body": "plain text body",
   "html_body": "<p>HTML</p>",
   "has_html": true,
+  "html_included": true,
+  "body_url_stripped": false,
   "attachments": [
     { "filename": "a.pdf", "size": 1234, "content_type": "application/pdf" }
   ],
@@ -157,7 +164,11 @@ Two main variants (optimized vs fallback). Keep a union of fields:
   "folder": "INBOX",
   "account": "user@example.com",
   "account_id": "acc_id",
-  "from_cache": true
+  "from_cache": true,
+  "body_length": 12000,
+  "html_length": 45000,
+  "body_truncated": false,
+  "html_truncated": false
 }
 ```
 

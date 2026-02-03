@@ -41,6 +41,7 @@ or old legacy layout), the CLI will read it and best-effort migrate to `auth.jso
 ## Output contract
 
 - When `--json` is passed, commands print a single JSON object to stdout.
+- When stdout is non-TTY, JSON output is used by default.
 - JSON payloads include:
   - `success: boolean`
   - `error: { code, message, detail? }` (only when `success=false`)
@@ -82,6 +83,15 @@ Select an `account_id` from the output.
 mailbox email list --unread-only --limit 20 --json
 ```
 
+`--limit` applies to the merged list across accounts when no `--account-id` is provided.
+`accounts_info[].fetched` reflects the returned count per account (after merge).
+
+Filter a specific date range:
+
+```bash
+mailbox email list --date-from 2026-02-02 --date-to 2026-02-03 --limit 50 --json
+```
+
 If you must confirm live state:
 
 ```bash
@@ -92,6 +102,18 @@ mailbox email list --unread-only --limit 20 --live --json
 
 ```bash
 mailbox email show <email_uid> --account-id <account_id> --json
+```
+
+To keep output small for OpenClaw, use preview and no HTML:
+
+```bash
+mailbox email show <email_uid> --account-id <account_id> --preview --no-html --json
+```
+
+If the preview is dominated by tracking URLs, add `--strip-urls`:
+
+```bash
+mailbox email show <email_uid> --account-id <account_id> --preview --no-html --strip-urls --json
 ```
 
 ### 4) Mark as read (validate first)

@@ -192,7 +192,7 @@ async function openSyncDb(dbPath) {
   };
 }
 
-async function listEmailsFromCache({ dbPath, accountId, folder, unreadOnly, limit, offset }) {
+async function listEmailsFromCache({ dbPath, accountId, folder, unreadOnly, limit, offset, dateFrom, dateTo }) {
   if (!dbPath || !fs.existsSync(dbPath)) return null;
 
   const h = await openSyncDb(dbPath);
@@ -231,6 +231,14 @@ async function listEmailsFromCache({ dbPath, accountId, folder, unreadOnly, limi
     }
     if (unreadOnly) {
       query += " AND e.is_read = 0";
+    }
+    if (dateFrom) {
+      query += " AND e.date_sent >= ?";
+      params.push(String(dateFrom));
+    }
+    if (dateTo) {
+      query += " AND e.date_sent <= ?";
+      params.push(String(dateTo));
     }
 
     // totals (same filters, no limit)

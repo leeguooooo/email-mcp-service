@@ -4,7 +4,21 @@
   "required": ["success", "emails"],
   "properties": {
     "success": { "type": "boolean" },
-    "error": { "type": "string" },
+    "error": {
+    "oneOf": [
+      { "type": "string" },
+      {
+        "type": "object",
+        "required": ["code", "message"],
+        "properties": {
+          "code": { "type": "string" },
+          "message": { "type": "string" },
+          "detail": {}
+        },
+        "additionalProperties": true
+      }
+    ]
+  },
     "emails": {
       "type": "array",
       "items": {
