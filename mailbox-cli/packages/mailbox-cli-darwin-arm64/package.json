@@ -5,7 +5,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/leeguooooo/email-mcp-service"
+    "url": "https://github.com/leeguooooo/Mailbox"
   },
   "publishConfig": {
     "access": "public"
