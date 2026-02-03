@@ -1,3 +1,5 @@
+const fs = require("fs");
+const path = require("path");
 const { Command } = require("commander");
 
 const { contract } = require("@mailbox/shared");
@@ -8,6 +10,31 @@ function _printTextNotImplemented(label) {
   process.stdout.write(`${label} (text mode) is not implemented yet. Use --json.\n`);
 }
 
+function _resolveCliVersion() {
+  const env = process.env.MAILBOX_CLI_VERSION || process.env.MAILBOX_VERSION || "";
+  if (env && typeof env === "string" && env.trim()) return env.trim();
+
+  const candidates = [
+    path.join(__dirname, "..", "package.json"),
+    path.join(__dirname, "..", "..", "package.json"),
+    path.join(process.cwd(), "package.json"),
+  ];
+
+  for (const p of candidates) {
+    try {
+      if (!fs.existsSync(p)) continue;
+      const raw = fs.readFileSync(p, "utf8");
+      const parsed = JSON.parse(raw);
+      const version = parsed && parsed.version ? String(parsed.version).trim() : "";
+      if (version) return version;
+    } catch {
+      // ignore
+    }
+  }
+
+  return "0.0.0";
+}
+
 async function main(argv) {
   const parsed = contract.parseGlobalFlags(argv);
   let asJson = parsed.asJson;
@@ -16,6 +43,7 @@ async function main(argv) {
 
   const program = new Command();
   program.name("mailbox");
+  program.version(_resolveCliVersion(), "-v, --version", "output the version");
   program.exitOverride();
 
   const accountCmd = program.command("account").description("Account operations");

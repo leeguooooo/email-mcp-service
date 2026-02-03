@@ -24,6 +24,7 @@ Install the published CLI:
 ```bash
 npm install -g @leeguoo/mailbox-cli
 mailbox --help
+mailbox --version
 ```
 
 This npm package ships prebuilt binaries per platform (no Python required).

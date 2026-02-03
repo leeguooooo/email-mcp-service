@@ -39,6 +39,15 @@ function main() {
     _die(`Unsupported platform: ${process.platform} ${process.arch}`);
   }
 
+  let launcherVersion = "";
+  try {
+    // eslint-disable-next-line import/no-dynamic-require, global-require
+    const launcherPkg = require(path.join(__dirname, "..", "package.json"));
+    launcherVersion = launcherPkg && launcherPkg.version ? String(launcherPkg.version) : "";
+  } catch {
+    launcherVersion = "";
+  }
+
   const mod = _requirePlatformPackage(pkg);
   const binaryPath = mod && mod.binaryPath;
   if (!binaryPath) {
@@ -46,7 +55,9 @@ function main() {
   }
 
   const args = process.argv.slice(2);
-  const r = spawnSync(binaryPath, args, { stdio: "inherit" });
+  const env = { ...process.env };
+  if (launcherVersion) env.MAILBOX_CLI_VERSION = launcherVersion;
+  const r = spawnSync(binaryPath, args, { stdio: "inherit", env });
   if (typeof r.status === "number") process.exit(r.status);
   process.exit(1);
 }
