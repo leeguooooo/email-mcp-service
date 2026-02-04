@@ -54,9 +54,13 @@ jobs:
   publish:
     runs-on: ubuntu-22.04
     needs: build-binary
+    environment: npm
     permissions:
       id-token: write
       contents: read
+    env:
+      NODE_AUTH_TOKEN: ""
+      NPM_TOKEN: ""
     steps:
       - uses: actions/checkout@v4
 
