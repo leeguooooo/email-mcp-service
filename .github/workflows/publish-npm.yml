@@ -64,7 +64,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          registry-url: "https://registry.npmjs.org"
 
       - name: Ensure npm supports OIDC publish
         shell: bash
@@ -86,10 +85,8 @@ jobs:
           set -euo pipefail
           unset NODE_AUTH_TOKEN || true
           unset NPM_TOKEN || true
-          if [ -n "${NPM_CONFIG_USERCONFIG:-}" ] && [ -f "$NPM_CONFIG_USERCONFIG" ]; then
-            sed -i '/_authToken/d' "$NPM_CONFIG_USERCONFIG" || true
-          fi
-          npm config delete //registry.npmjs.org/:_authToken || true
+          export NPM_CONFIG_USERCONFIG="$PWD/.npmrc"
+          printf "registry=https://registry.npmjs.org/\n" > "$NPM_CONFIG_USERCONFIG"
           npm config list
 
       - name: Download binaries
@@ -125,9 +122,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm publish --access public "mailbox-cli/packages/mailbox-cli-darwin-arm64"
-          npm publish --access public "mailbox-cli/packages/mailbox-cli-darwin-x64"
-          npm publish --access public "mailbox-cli/packages/mailbox-cli-linux-x64-gnu"
+          env -u NODE_AUTH_TOKEN -u NPM_TOKEN npm publish --access public "mailbox-cli/packages/mailbox-cli-darwin-arm64"
+          env -u NODE_AUTH_TOKEN -u NPM_TOKEN npm publish --access public "mailbox-cli/packages/mailbox-cli-darwin-x64"
+          env -u NODE_AUTH_TOKEN -u NPM_TOKEN npm publish --access public "mailbox-cli/packages/mailbox-cli-linux-x64-gnu"
 
       - name: Publish launcher package
-        run: npm publish --access public mailbox-cli/packages/mailbox-cli
+        run: env -u NODE_AUTH_TOKEN -u NPM_TOKEN npm publish --access public mailbox-cli/packages/mailbox-cli
