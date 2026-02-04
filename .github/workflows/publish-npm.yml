@@ -58,9 +58,6 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    env:
-      NODE_AUTH_TOKEN: ""
-      NPM_TOKEN: ""
     steps:
       - uses: actions/checkout@v4
 
@@ -82,6 +79,18 @@ jobs:
 
       - name: Install
         run: pnpm install
+
+      - name: Force OIDC (ignore legacy tokens)
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset NODE_AUTH_TOKEN || true
+          unset NPM_TOKEN || true
+          if [ -n "${NPM_CONFIG_USERCONFIG:-}" ] && [ -f "$NPM_CONFIG_USERCONFIG" ]; then
+            sed -i '/_authToken/d' "$NPM_CONFIG_USERCONFIG" || true
+          fi
+          npm config delete //registry.npmjs.org/:_authToken || true
+          npm config list
 
       - name: Download binaries
         uses: actions/download-artifact@v4
