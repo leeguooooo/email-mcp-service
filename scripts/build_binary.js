@@ -29,6 +29,26 @@ function run(cmd, args) {
   child_process.execFileSync(cmd, args, { stdio: "inherit" });
 }
 
+function ensureBinary(entry, target, outBin, root) {
+  run("pnpm", ["-C", root, "exec", "pkg", entry, "--targets", target, "--output", outBin]);
+  if (!fs.existsSync(outBin)) {
+    console.warn(`pkg did not produce ${outBin}. Retrying once...`);
+    run("pnpm", ["-C", root, "exec", "pkg", entry, "--targets", target, "--output", outBin]);
+  }
+  if (!fs.existsSync(outBin)) {
+    console.error(`pkg failed to produce ${outBin}`);
+    try {
+      const dir = path.dirname(outBin);
+      if (fs.existsSync(dir)) {
+        console.error(`dist contents: ${fs.readdirSync(dir).join(", ") || "(empty)"}`);
+      }
+    } catch {
+      // ignore
+    }
+    process.exit(1);
+  }
+}
+
 function main() {
   const pkgName = platformPackage();
   const target = pkgTarget();
@@ -46,7 +66,7 @@ function main() {
   const root = path.join(__dirname, "..");
   run("pnpm", ["-C", root, "install"]);
   run("pnpm", ["-C", root, "test"]);
-  run("pnpm", ["-C", root, "exec", "pkg", entry, "--targets", target, "--output", outBin]);
+  ensureBinary(entry, target, outBin, root);
 
   const platformPkgDir = path.join(__dirname, "..", "mailbox-cli", "packages", pkgName);
   const binDir = path.join(platformPkgDir, "bin");
